@@ -27,23 +27,21 @@ sub send {
 	my $cb = @_ % 2 == 0 ? undef : pop;
 	my %cmd = @_;
 	
-	my $delay = Mojo::IOLoop::Delay->new;
 	my @steps;
 	my $expected_code;
+	my $nb = $cb ? 1 : 0;
 	
 	my $resp_checker = sub {
-		my ($resp, $err) = @_;
+		my ($delay, $resp, $err) = @_;
 		die $err, "\n" if $err;
 		_check_response($resp, $expected_code);
 		$delay->pass($resp);
 	};
 	
-	my $stream_error;
-	
 	unless ($self->{stream}) {
 		push @steps, sub {
 			# connect
-			Mojo::IOLoop->client(
+			($nb ? Mojo::IOLoop->singleton : $self->ioloop)->client(
 				address => $self->address,
 				port    => $self->port,
 				timeout => $self->connect_timeout,
@@ -52,22 +50,10 @@ sub send {
 		},
 		sub {
 			# read response
-			my (undef, $err, $stream) = @_;
+			my ($delay, $err, $stream) = @_;
 			Mojo::IOLoop::Stream->throw($err) if $err;
 			
 			$self->{stream} = $stream;
-			$stream->on(timeout => sub {
-				delete($self->{stream})->close;
-				$stream_error = Mojo::SMTP::Client::Exception::Stream->new('Inactivity timeout');
-			});
-			$stream->on(error => sub {
-				delete($self->{stream})->close;
-				$stream_error = Mojo::SMTP::Client::Exception::Stream->new($_[-1]);
-			});
-			$stream->on(close => sub {
-				delete($self->{stream})->close;
-				$stream_error = Mojo::SMTP::Client::Exception::Stream->new('Socket closed unexpectedly by remote side');
-			});
 			
 			$self->_read_response($delay->begin);
 			$expected_code = CMD_OK;
@@ -110,12 +96,15 @@ sub send {
 		$resp_checker;
 		
 		if (ref $cmd{data} eq 'CODE') {
+			my $data_writer_cb;
 			my $data_writer; $data_writer = sub {
+				$data_writer_cb = $delay->begin unless $data_writer_cb;
 				my $data = $cmd{data}->();
+				
 				unless (defined $data) {
 					undef $data_writer;
 					$self->_cmd(CRLF.'.');
-					$self->_read_response($delay->begin);
+					$self->_read_response($data_writer_cb);
 					$expected_code = CMD_OK;
 					return;
 				}
@@ -156,7 +145,6 @@ sub send {
 		die "unrecognized commands specified: ", join(", ", keys %cmd);
 	}
 	
-	my $nb = $cb ? 1 : 0;
 	my ($resp, $err);
 	
 	unless ($nb) {
@@ -167,7 +155,7 @@ sub send {
 	}
 	
 	# non-blocking
-	$delay->steps(@steps)->catch(sub {
+	Mojo::IOLoop::Delay->new->steps(@steps)->catch(sub {
 		$cb->(undef, pop);
 	});
 	
@@ -179,17 +167,37 @@ sub send {
 	}
 }
 
+sub handle_errors {
+	my ($self, $cb) = @_;
+	
+	unless ($cb) {
+		return
+			$self->{stream}->unsubscribe('timeout')
+			               ->unsubscribe('error')
+			               ->unsubscribe('close');
+	}
+	
+	$self->{stream}->on(timeout => sub {
+		delete($self->{stream})->close;
+		$stream_error = Mojo::SMTP::Client::Exception::Stream->new('Inactivity timeout');
+	});
+	$self->{stream}->on(error => sub {
+		delete($self->{stream})->close;
+		$stream_error = Mojo::SMTP::Client::Exception::Stream->new($_[-1]);
+	});
+	$self->{stream}->on(close => sub {
+		delete($self->{stream})->close;
+		$stream_error = Mojo::SMTP::Client::Exception::Stream->new('Socket closed unexpectedly by remote side');
+	});
+}
+
 sub _cmd {
 	my ($self, $cmd) = @_;
-	die $self->{stream_error} if $self->{stream_error};
-	
 	$self->{stream}->write($cmd.CRLF);
 }
 
 sub _read_response {
 	my ($self, $cb) = @_;
-	die $self->{stream_error} if $self->{stream_error};
-	
 	$self->{stream}->timeout($self->inactivity_timeout);
 	my $resp = '';
 	
