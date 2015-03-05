@@ -56,7 +56,7 @@ sub send {
 			my $delay = shift;
 			# connect
 			$self->{last_cmd} = CMD_CONNECT;
-			($nb ? Mojo::IOLoop->singleton : $self->ioloop)->client(
+			$self->_ioloop($nb)->client(
 				address => $self->address,
 				port    => $self->port,
 				timeout => $self->connect_timeout,
@@ -103,9 +103,10 @@ sub send {
 	
 	if (exists $cmd{from}) {
 		# FROM
+		my $from = delete $cmd{from};
 		push @steps, sub {
 			my $delay = shift;
-			$self->_cmd('MAIL FROM:<'.delete($cmd{from}).'>', CMD_FROM);
+			$self->_cmd('MAIL FROM:<'.$from.'>', CMD_FROM);
 			$self->_read_response($delay->begin);
 			$expected_code = CMD_OK;
 		},
@@ -164,10 +165,11 @@ sub send {
 			push @steps, $data_writer, $resp_checker;
 		}
 		else {
+			my $data = delete $cmd{data};
 			push @steps, sub {
 				my $delay = shift;
 				my $data_writer_cb = $delay->begin;
-				$self->{stream}->write(delete $cmd{data}, $data_writer_cb);
+				$self->{stream}->write($data, $data_writer_cb);
 				$self->_set_errors_handler(sub {
 					$data_writer_cb->(@_);
 				});
@@ -207,7 +209,7 @@ sub send {
 	}
 	
 	# non-blocking
-	my $delay = Mojo::IOLoop::Delay->new->steps(@steps)->catch(sub {
+	my $delay = Mojo::IOLoop::Delay->new(ioloop => $self->_ioloop($nb))->steps(@steps)->catch(sub {
 		shift->emit(finish => {error => $_[0]});
 	});
 	$delay->on(finish => sub {
@@ -223,12 +225,15 @@ sub send {
 	unless ($nb) {
 		$cb = sub {
 			$resp = shift;
-			$self->ioloop->stop;
 		};
-		$delay->ioloop($self->ioloop);
 		$delay->wait;
 		return $self->autodie && $resp->{error} ? die $resp->{error} : $resp;
 	}
+}
+
+sub _ioloop {
+	my ($self, $nb) = @_;
+	return $nb ? Mojo::IOLoop->singleton : $self->ioloop;
 }
 
 sub _set_errors_handler {
