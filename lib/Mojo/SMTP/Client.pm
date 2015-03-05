@@ -8,11 +8,19 @@ use Mojo::SMTP::Client::Exception;
 our $VERSION = 0.01;
 
 use constant {
-	CMD_OK     => 2,
-	CMD_MORE   => 3,
-	CMD_REJECT => 4,
-	CMD_ERROR  => 5,
-	CRLF       => "\x0d\x0a",
+	CMD_OK       => 2,
+	CMD_MORE     => 3,
+	
+	CMD_CONNECT  => 1,
+	CMD_EHLO     => 2,
+	CMD_HELO     => 3,
+	CMD_FROM     => 4,
+	CMD_TO       => 5,
+	CMD_DATA     => 6,
+	CMD_DATA_END => 7,
+	CMD_QUIT     => 8,
+	
+	CRLF        => "\x0d\x0a",
 };
 
 has address            => 'localhost';
@@ -30,10 +38,13 @@ sub send {
 	
 	my @steps;
 	my $expected_code;
+	my $last_cmd;
 	my $nb = $cb ? 1 : 0;
 	
 	my $resp_checker = sub {
 		my ($delay, $resp) = @_;
+		$self->emit(response => $self->{last_cmd}, $resp);
+		
 		die $resp->{error} if $resp->{error};
 		substr($resp->{code}, 0, 1) == $expected_code
 			or Mojo::SMTP::Client::Exception::Response->throw($resp->{code}, join("\n", @{$resp->{messages}}));
@@ -44,6 +55,7 @@ sub send {
 		push @steps, sub {
 			my $delay = shift;
 			# connect
+			$self->{last_cmd} = CMD_CONNECT;
 			($nb ? Mojo::IOLoop->singleton : $self->ioloop)->client(
 				address => $self->address,
 				port    => $self->port,
@@ -67,11 +79,33 @@ sub send {
 		$self->{stream}->start;
 	}
 	
+	# HELO
+	push @steps, sub {
+		my $delay = shift;
+		$self->_cmd('EHLO ' . $self->hello, CMD_EHLO);
+		$self->_read_response($delay->begin);
+		$expected_code = CMD_OK;
+	}, 
+	sub {
+		eval { $resp_checker->(@_); $_[1]->{checked} = 1 };
+		if (my $err = $@) {
+			my $delay = shift;
+			die $err unless $err->isa('Mojo::SMTP::Client::Exception::Response');
+			$self->_cmd('HELO ' . $self->hello, CMD_HELO);
+			$self->_read_response($delay->begin);
+		}
+	},
+	sub {
+		my ($delay, $resp) = @_;
+		return $delay->pass($resp) if delete $resp->{checked};
+		$resp_checker->($delay, $resp);
+	};
+	
 	if (exists $cmd{from}) {
 		# FROM
 		push @steps, sub {
 			my $delay = shift;
-			$self->_cmd('MAIL FROM:<'.delete($cmd{from}).'>');
+			$self->_cmd('MAIL FROM:<'.delete($cmd{from}).'>', CMD_FROM);
 			$self->_read_response($delay->begin);
 			$expected_code = CMD_OK;
 		},
@@ -82,7 +116,7 @@ sub send {
 		for my $to (ref $cmd{to} ? @{$cmd{to}} : $cmd{to}) {
 			push @steps, sub {
 				my $delay = shift;
-				$self->_cmd('RCPT TO:<'.$to.'>');
+				$self->_cmd('RCPT TO:<'.$to.'>', CMD_TO);
 				$self->_read_response($delay->begin);
 				$expected_code = CMD_OK;
 			},
@@ -94,7 +128,7 @@ sub send {
 		# DATA
 		push @steps, sub {
 			my $delay = shift;
-			$self->_cmd('DATA');
+			$self->_cmd('DATA', CMD_DATA);
 			$self->_read_response($delay->begin);
 			$expected_code = CMD_MORE;
 		},
@@ -109,14 +143,15 @@ sub send {
 				unless ($data_writer_cb) {
 					$data_writer_cb = $delay->begin;
 					$self->_set_errors_handler(sub {
-						$data_writer_cb->(@_);
+						$data_writer_cb->($delay, @_);
 						undef $data_writer;
 					});
 				}
+				
 				my $data = $data_generator->();
 				
 				unless (defined $data) {
-					$self->_cmd(CRLF.'.');
+					$self->_cmd(CRLF.'.', CMD_DATA_END);
 					$self->_read_response($data_writer_cb);
 					$self->_set_errors_handler(undef);
 					$expected_code = CMD_OK;
@@ -138,13 +173,13 @@ sub send {
 				});
 			},
 			sub {
-				my $delay = shift;
-				if ($_[0] && $_[0]->{error}) {
-					die $_[0]->{error};
+				my ($delay, $resp) = @_;
+				if ($resp && $resp->{error}) {
+					die $resp->{error};
 				}
 				
 				$self->_set_errors_handler(undef);
-				$self->_cmd(CRLF.'.');
+				$self->_cmd(CRLF.'.', CMD_DATA_END);
 				$self->_read_response($delay->begin);
 				$expected_code = CMD_OK;
 			},
@@ -156,7 +191,7 @@ sub send {
 		delete $cmd{quit};
 		push @steps, sub {
 			my $delay = shift;
-			$self->_cmd('QUIT');
+			$self->_cmd('QUIT', CMD_QUIT);
 			$self->_read_response($delay->begin);
 			$expected_code = CMD_OK;
 		},
@@ -176,8 +211,10 @@ sub send {
 		shift->emit(finish => {error => $_[0]});
 	});
 	$delay->on(finish => sub {
-		$self->{stream}->timeout(0);
-		$self->{stream}->stop;
+		if ($self->{stream}) {
+			$self->{stream}->timeout(0);
+			$self->{stream}->stop;
+		}
 		$cb->($_[1]);
 	});
 	
@@ -206,20 +243,21 @@ sub _set_errors_handler {
 	
 	$self->{stream}->on(timeout => sub {
 		delete($self->{stream})->close;
-		$cb->({error => Mojo::SMTP::Client::Exception::Stream->new('Inactivity timeout')});
+		$cb->($self, {error => Mojo::SMTP::Client::Exception::Stream->new('Inactivity timeout')});
 	});
 	$self->{stream}->on(error => sub {
 		delete($self->{stream})->close;
-		$cb->({error => Mojo::SMTP::Client::Exception::Stream->new($_[-1])});
+		$cb->($self, {error => Mojo::SMTP::Client::Exception::Stream->new($_[-1])});
 	});
 	$self->{stream}->on(close => sub {
 		delete($self->{stream});
-		$cb->({error => Mojo::SMTP::Client::Exception::Stream->new('Socket closed unexpectedly by remote side')});
+		$cb->($self, {error => Mojo::SMTP::Client::Exception::Stream->new('Socket closed unexpectedly by remote side')});
 	});
 }
 
 sub _cmd {
-	my ($self, $cmd) = @_;
+	my ($self, $cmd, $cmd_const) = @_;
+	$self->{last_cmd} = $cmd_const;
 	$self->{stream}->write($cmd.CRLF);
 }
 
@@ -234,7 +272,7 @@ sub _read_response {
 		if ($resp =~ /^\d+(?:\s[^\n]*)?\n$/m) {
 			$self->{stream}->unsubscribe('read');
 			$self->_set_errors_handler(undef);
-			$cb->(_parse_response($resp));
+			$cb->($self, _parse_response($resp));
 		}
 	});
 }
