@@ -38,7 +38,6 @@ sub send {
 	
 	my @steps;
 	my $expected_code;
-	my $last_cmd;
 	my $nb = $cb ? 1 : 0;
 	
 	my $resp_checker = sub {
