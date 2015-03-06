@@ -20,7 +20,7 @@ use constant {
 	CMD_DATA_END => 7,
 	CMD_QUIT     => 8,
 	
-	CRLF        => "\x0d\x0a",
+	CRLF         => "\x0d\x0a",
 };
 
 has address            => 'localhost';
