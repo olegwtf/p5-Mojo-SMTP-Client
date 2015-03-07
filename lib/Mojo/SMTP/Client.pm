@@ -72,33 +72,32 @@ sub send {
 			$expected_code = CMD_OK;
 		},
 		# check response
-		$resp_checker
+		$resp_checker,
+		# HELO
+		sub {
+			my $delay = shift;
+			$self->_cmd('EHLO ' . $self->hello, CMD_EHLO);
+			$self->_read_response($delay->begin);
+			$expected_code = CMD_OK;
+		}, 
+		sub {
+			eval { $resp_checker->(@_); $_[1]->{checked} = 1 };
+			if (my $err = $@) {
+				my $delay = shift;
+				die $err unless $err->isa('Mojo::SMTP::Client::Exception::Response');
+				$self->_cmd('HELO ' . $self->hello, CMD_HELO);
+				$self->_read_response($delay->begin);
+			}
+		},
+		sub {
+			my ($delay, $resp) = @_;
+			return $delay->pass($resp) if delete $resp->{checked};
+			$resp_checker->($delay, $resp);
+		};
 	}
 	else {
 		$self->{stream}->start;
 	}
-	
-	# HELO
-	push @steps, sub {
-		my $delay = shift;
-		$self->_cmd('EHLO ' . $self->hello, CMD_EHLO);
-		$self->_read_response($delay->begin);
-		$expected_code = CMD_OK;
-	}, 
-	sub {
-		eval { $resp_checker->(@_); $_[1]->{checked} = 1 };
-		if (my $err = $@) {
-			my $delay = shift;
-			die $err unless $err->isa('Mojo::SMTP::Client::Exception::Response');
-			$self->_cmd('HELO ' . $self->hello, CMD_HELO);
-			$self->_read_response($delay->begin);
-		}
-	},
-	sub {
-		my ($delay, $resp) = @_;
-		return $delay->pass($resp) if delete $resp->{checked};
-		$resp_checker->($delay, $resp);
-	};
 	
 	if (exists $cmd{from}) {
 		# FROM
@@ -150,7 +149,7 @@ sub send {
 				
 				my $data = $data_generator->();
 				
-				unless (defined $data) {
+				unless (length($data) > 0) {
 					$self->_cmd(CRLF.'.', CMD_DATA_END);
 					$self->_read_response($data_writer_cb);
 					$self->_set_errors_handler(undef);

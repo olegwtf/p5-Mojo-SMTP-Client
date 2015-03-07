@@ -4,6 +4,8 @@ use strict;
 use IO::Socket 'CRLF';
 use Socket;
 
+use constant DEBUG => $ENV{MOJO_SMTP_TEST_DEBUG};
+
 sub make_smtp_server {
 	my $srv = IO::Socket::INET->new(Listen => 10)
 		or die $@;
@@ -19,8 +21,10 @@ sub make_smtp_server {
 		e_syswrite($sock2, 'CONNECT'.CRLF);
 		
 		while (my $resp = <$sock2>) {
-			e_syswrite($clt, $resp) if $resp =~ /^\d+/;
+			e_syswrite($clt, $resp) && DEBUG && warn "<- $resp" if $resp =~ /^\d+/;
+			next if $resp =~ /^\d+-/;
 			my $cmd = e_getline($clt);
+			warn "-> $cmd" if DEBUG;
 			e_syswrite($sock2, $cmd);
 		}
 		exit;
