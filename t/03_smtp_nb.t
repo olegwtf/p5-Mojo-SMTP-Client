@@ -151,6 +151,106 @@ is($resp_cnt, @cmd_const, 'right response count');
 close $sock;
 kill 15, $pid;
 
+my ($pid1, $sock1, $host1, $port1) = Utils::make_smtp_server();
+my ($pid2, $sock2, $host2, $port2) = Utils::make_smtp_server();
+
+my $smtp1 = Mojo::SMTP::Client->new(address => $host1, port => $port1, inactivity_timeout => 0.5);
+my $smtp2 = Mojo::SMTP::Client->new(address => $host2, port => $port2, inactivity_timeout => 0.5);
+my $clients = 2;
+
+$smtp1->send(
+	from => 'root1@2gis.ru',
+	to   => 'jora1@2gis.ru',
+	data => '123',
+	quit => 1,
+	sub {
+		my $resp = shift;
+		ok(!$resp->{error}, 'no error for client 1');
+		is($resp->{code}, 220, 'right code for client 1');
+		is($resp->{messages}[0], 'OK', 'right message for client 1');
+		$loop->stop unless --$clients;
+	}
+);
+
+my @cmd1 = (
+	'CONNECT',
+	'EHLO localhost.localdomain',
+	'MAIL FROM:<root1@2gis.ru>',
+	'RCPT TO:<jora1@2gis.ru>',
+	'DATA',
+	'123',
+	'.',
+	'QUIT'
+);
+
+$smtp2->send(
+	from => 'root2@2gis.ru',
+	to   => 'jora2@2gis.ru',
+	data => '321',
+	quit => 1,
+	sub {
+		my $resp = shift;
+		ok($resp->{error}, 'error for client 2');
+		isa_ok($resp->{error}, 'Mojo::SMTP::Client::Exception::Stream', 'right error for client 2');
+		is($resp->{code}, undef, 'no code for client 2');
+		is($resp->{messages}, undef, 'no messages for client 2');
+		$loop->stop unless --$clients;
+	}
+);
+
+my @cmd2 = (
+	'CONNECT',
+	'EHLO localhost.localdomain',
+	'MAIL FROM:<root2@2gis.ru>',
+	'RCPT TO:<jora2@2gis.ru>',
+	'DATA',
+	'321',
+	'.',
+	'QUIT'
+);
+
+my $recurring_cnt = 0;
+$loop->recurring(0.1 => sub {
+	$recurring_cnt++;
+});
+
+my $i1 = 0;
+$loop->reactor->io($sock1 => sub {
+	my $cmd = <$sock1>;
+	return unless $cmd; # socket closed
+	$cmd =~ s/\s+$//;
+	
+	is($cmd, $cmd1[$i1++], 'right cmd for client 1');
+	syswrite($sock1, ($cmd eq 'DATA' ? '320 OK' : '220 OK').CRLF);
+});
+
+my $i2 = 0;
+$loop->reactor->io($sock2 => sub {
+	my $cmd = <$sock2>;
+	return unless $cmd; # socket closed
+	$cmd =~ s/\s+$//;
+	
+	is($cmd, $cmd2[$i2++], 'right cmd for client 2');
+	if ($cmd eq '.') {
+		# make timeout
+		$loop->timer(2 => sub {
+			syswrite($sock2, '220 OK'.CRLF);
+		});
+	}
+	else {
+		syswrite($sock2, ($cmd eq 'DATA' ? '320 OK' : '220 OK').CRLF);
+	}
+});
+
+$loop->reactor->watch($sock1, 1, 0);
+$loop->reactor->watch($sock2, 1, 0);
+$loop->start;
+
+ok($recurring_cnt > 1, 'loop was not blocked');
+close $sock1;
+close $sock2;
+kill 15, $pid1, $pid2;
+
 done_testing;
 
 __DATA__
