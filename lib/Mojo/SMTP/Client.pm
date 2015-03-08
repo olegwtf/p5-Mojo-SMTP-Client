@@ -245,11 +245,11 @@ sub _set_errors_handler {
 	}
 	
 	$self->{stream}->on(timeout => sub {
-		delete($self->{stream})->close;
+		delete($self->{stream});
 		$cb->($self, {error => Mojo::SMTP::Client::Exception::Stream->new('Inactivity timeout')});
 	});
 	$self->{stream}->on(error => sub {
-		delete($self->{stream})->close;
+		delete($self->{stream});
 		$cb->($self, {error => Mojo::SMTP::Client::Exception::Stream->new($_[-1])});
 	});
 	$self->{stream}->on(close => sub {
