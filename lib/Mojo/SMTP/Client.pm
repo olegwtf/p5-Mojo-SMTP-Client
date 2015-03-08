@@ -136,6 +136,7 @@ sub send {
 		if (ref $cmd{data} eq 'CODE') {
 			my ($data_writer, $data_writer_cb);
 			my $data_generator = delete $cmd{data};
+			my $was_nl;
 			
 			$data_writer = sub {
 				my $delay = shift;
@@ -150,13 +151,14 @@ sub send {
 				my $data = $data_generator->();
 				
 				unless (length($data) > 0) {
-					$self->_cmd(CRLF.'.', CMD_DATA_END);
+					$self->_cmd(($was_nl ? '' : CRLF).'.', CMD_DATA_END);
 					$self->_read_response($data_writer_cb);
 					$self->_set_errors_handler(undef);
 					$expected_code = CMD_OK;
 					return undef $data_writer;
 				}
 				
+				$was_nl = $data =~ /\012$/;
 				$self->{stream}->write($data, $data_writer);
 			};
 			
@@ -179,7 +181,7 @@ sub send {
 				}
 				
 				$self->_set_errors_handler(undef);
-				$self->_cmd(CRLF.'.', CMD_DATA_END);
+				$self->_cmd(($data =~ /\012$/ ? '' : CRLF).'.', CMD_DATA_END);
 				$self->_read_response($delay->begin);
 				$expected_code = CMD_OK;
 			},
