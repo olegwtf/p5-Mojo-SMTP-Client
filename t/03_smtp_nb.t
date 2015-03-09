@@ -10,13 +10,13 @@ my $loop = Mojo::IOLoop->singleton;
 my ($pid, $sock, $host, $port) = Utils::make_smtp_server();
 my $smtp = Mojo::SMTP::Client->new(address => $host, port => $port);
 $smtp->send(sub {
-	my $resp = shift;
+	my $resp = pop;
 	ok(!$resp->{error}, 'no error');
 	is($resp->{code}, 220, 'right code');
 	is($resp->{messages}[0], 'OK', 'right message');
 	
 	$smtp->send(from => 'baralgin@mail.net', to => ['jorik@40.com', 'vasya@gde.org.ru'], quit => 1, sub {
-		my $resp = shift;
+		my $resp = pop;
 		ok(!$resp->{error}, 'no error');
 		is($resp->{code}, 220, 'right code');
 		$loop->stop;
@@ -52,7 +52,8 @@ $smtp->send(
 	to   => 'robert@mail.ru',
 	data => "From: foo\@bar.net\r\nTo: robert\@mail.ru\r\nSubject: Hello!\r\n\r\nHello world",
 	sub {
-		my $resp = shift;
+		my ($smtp, $resp) = @_;
+		isa_ok($smtp, 'Mojo::SMTP::Client');
 		ok(!$resp->{error}, 'no error');
 		is($resp->{code}, 224, 'right code');
 		is($resp->{messages}[0], 'Message sent', 'right message 1');
@@ -67,7 +68,7 @@ $smtp->send(
 			},
 			quit => 1,
 			sub {
-				my $resp = shift;
+				my $resp = pop;
 				ok(!$resp->{error}, 'no error');
 				$loop->stop;
 			}
@@ -119,22 +120,13 @@ $smtp->on(response => sub {
 	my (undef, $cmd, $resp) = @_;
 	is($cmd, $cmd_const[$resp_cnt], 'right cmd constant inside response event');
 	my $resp_str;
-	if ($resp->{error}) {
-		my @msg = split CRLF, $resp->{error}->message;
-		for my $i (0..$#msg) {
-			$resp_str .= $resp->{error}->code . ($i == $#msg ? ' ' : '-') . $msg[$i];
-			$resp_str .= CRLF unless $i == $#msg;
-		}
-	}
-	else {
-		for my $i (0..$#{$resp->{messages}}) {
-			$resp_str .= $resp->{code} . ($i == $#{$resp->{messages}} ? ' ' : '-') . $resp->{messages}[$i];
-			$resp_str .= CRLF unless $i == $#{$resp->{messages}};
-		}
+	
+	for my $i (0..$#{$resp->{messages}}) {
+		$resp_str .= $resp->{code} . ($i == $#{$resp->{messages}} ? ' ' : '-') . $resp->{messages}[$i];
+		$resp_str .= CRLF unless $i == $#{$resp->{messages}};
 	}
 	
 	is($resp_str, $responses[$resp_cnt], 'right response');
-	
 	$resp_cnt++;
 });
 $loop->reactor->io($sock => sub {
@@ -163,7 +155,7 @@ $smtp1->send(
 	data => '123',
 	quit => 1,
 	sub {
-		my $resp = shift;
+		my $resp = pop;
 		ok(!$resp->{error}, 'no error for client 1');
 		is($resp->{code}, 220, 'right code for client 1');
 		is($resp->{messages}[0], 'OK', 'right message for client 1');
@@ -188,7 +180,7 @@ $smtp2->send(
 	data => '321',
 	quit => 1,
 	sub {
-		my $resp = shift;
+		my $resp = pop;
 		ok($resp->{error}, 'error for client 2');
 		isa_ok($resp->{error}, 'Mojo::SMTP::Client::Exception::Stream', 'right error for client 2');
 		is($resp->{code}, undef, 'no code for client 2');
