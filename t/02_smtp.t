@@ -5,6 +5,10 @@ use Socket 'CRLF';
 use lib 't/lib';
 use Utils;
 
+if ($^O eq 'MSWin32') {
+	plan skip_all => 'fork() support required';
+}
+
 my ($pid, $sock, $host, $port) = Utils::make_smtp_server();
 my $smtp = Mojo::SMTP::Client->new(address => $host, port => $port);
 syswrite($sock, join(CRLF, '220 host.net', '220 hello ok', '220 from ok', '220 to ok', '220 quit ok').CRLF);
