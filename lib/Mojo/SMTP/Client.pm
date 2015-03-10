@@ -515,6 +515,101 @@ C<Mojo::SMTP::Client> has this non-importable constants
 	CMD_DATA_END # client sent . command
 	CMD_QUIT     # client sent QUIT command
 
+=head1 COOKBOOK
+
+=head2 How to send simple ASCII message
+
+ASCII message is simple enough, so you can generate it by hands
+
+	$smtp->send(
+		from => 'me@home.org',
+		to   => 'you@work.org',
+		data => join(
+			"\r\n",
+			'MIME-Version: 1.0',
+			'Subject: Subject of the message',
+			'From: me@home.org',
+			'To: you@work.org',
+			'Content-Type: text/plain; charset=UTF-8',
+			'',
+			'Text of the message'
+		)
+	);
+
+However it is not recommended to generate emails by hand if you are not
+familar with MIME. For more convenient approaches see below.
+
+=head2 How to send text message with possible non-ASCII characters
+
+For more convinient way to generate emails we can use some email generators
+available on CPAN. C<MIME::Lite> for example. With such modules we can get
+email as a string and send it with C<Mojo::SMTP::Client>
+
+	use MIME::Lite;
+	use Encode;
+	
+	my $msg = MIME::Lite->new(
+		Type    => 'text',
+		From    => 'me@home.org',
+		To      => 'you@work.org',
+		Subject => Encode::encode('MIME-Header', '世界, 労働, 5月!'),
+		Data    => 'Novosibirsk (Russian: Новосибирск; IPA: [nəvəsʲɪˈbʲirsk]) is the third most populous '.
+		           'city in Russia after Moscow and St. Petersburg and the most populous city in Asian Russia'
+	);
+	$msg->attr('content-type.charset' => 'UTF-8');
+	
+	$smtp->send(
+		from => 'me@home.org',
+		to   => 'you@work.org',
+		data => $msg->as_string
+	);
+
+=head2 How to send message with attachment
+
+This is also simple with C<MIME::Lite>
+
+	use MIME::Lite;
+	
+	my $msg = MIME::Lite->new(
+		Type    => 'multipart/mixed',
+		From    => 'me@home.org',
+		To      => 'you@work.org',
+		Subject => 'statistic for 10.03.2015'
+	);
+	$msg->attach(Path => '/home/kate/stat/10032015.xlsx', Disposition => 'attachment', Type => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+	
+	$smtp->send(
+		from => 'me@home.org',
+		to   => 'you@work.org',
+		data => $msg->as_string
+	);
+
+=head2 How to send message with BIG attachment
+
+It will be not cool to get message with 50 mb attachment into memory before sending.
+Fortunetly with help of C<MIME::Lite> and C<MIME::Lite::Generator> we can generate
+our email by small portions. As you remember C<data> command accepts subroutine reference
+as argument, so it will be super easy to send our big email in memory-efficient way
+
+	use MIME::Lite;
+	
+	my $msg = MIME::Lite->new(
+		Type    => 'multipart/mixed',
+		From    => 'me@home.org',
+		To      => 'you@work.org',
+		Subject => 'my home video'
+	);
+	# Note: MIME::Lite will not load this file into memory
+	$msg->attach(Path => '/home/kate/videos/beach.avi', Disposition => 'attachment', Type => "video/msvideo");
+	
+	my $generator = MIME::Lite::Generator->new($msg);
+	
+	$smtp->send(
+		from => 'me@home.org',
+		to   => 'you@work.org',
+		data => sub { $generator->get() }
+	);
+
 =head1 SEE ALSO
 
 L<Mojo::SMTP::Client::Exception>, L<Mojolicious>, L<Mojo::IOLoop>
