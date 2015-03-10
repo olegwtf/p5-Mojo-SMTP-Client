@@ -415,10 +415,10 @@ Event loop object to use for blocking I/O operations, defaults to a L<Mojo::IOLo
 
 =head2 autodie
 
-Defines should C<Mojo::SMTP::Client> throw exceptions for any type of errors. This only usable for
+Defines should or not C<Mojo::SMTP::Client> throw exceptions for any type of errors. This only usable for
 blocking usage of C<Mojo::SMTP::Client>, because non-blocking one should never die. Throwed
 exception will be one of the specified in L<Mojo::SMTP::Client::Exception>. When autodie attribute
-has false value you should check C<$respE<gt>{error}> yourself.
+has false value you should check C<$respE<gt>{error}> yourself. Default is false.
 
 =head1 METHODS
 
@@ -456,7 +456,7 @@ or reference to array with email strings (for more than one recipient)
 =item data
 
 Email body to be sent. Value for this command should be a string with email body or reference to subroutine
-each call of which should return some chunk of the email as tring and empty string at the end (useful to send
+each call of which should return some chunk of the email as string and empty string at the end (useful to send
 big emails in memory efficient way)
 
 	$smtp->send(data => "Subject: This is my first message\r\n\r\nSent from Mojolicious app");
