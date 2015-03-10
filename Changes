@@ -3,6 +3,7 @@ Revision history for Perl extension Mojo::SMTP::Client
 0.02  Tue Mar 10 22:37:21 NOVT 2015
     - `start' event added
     - allow argument for `data' command to be a reference to a string
+    - new global %CMD variable
     - cookbook with some useful examples added
 
 0.01  Mon Mar  9 13:48:44 NOVT 2015

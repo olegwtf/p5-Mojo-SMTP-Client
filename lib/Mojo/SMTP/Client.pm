@@ -331,6 +331,8 @@ __END__
 
 =pod
 
+=encoding utf8
+
 =head1 NAME
 
 Mojo::SMTP::Client - non-blocking SMTP client based on Mojo::IOLoop
@@ -574,7 +576,7 @@ familar with MIME standard. For more convenient approaches see below.
 =head2 How to send text message with possible non-ASCII characters
 
 For more convinient way to generate emails we can use some email generators
-available on CPAN. C<MIME::Lite> for example. With such modules we can get
+available on CPAN. L<MIME::Lite> for example. With such modules we can get
 email as a string and send it with C<Mojo::SMTP::Client>
 
 	use MIME::Lite;
@@ -598,7 +600,7 @@ email as a string and send it with C<Mojo::SMTP::Client>
 
 =head2 How to send message with attachment
 
-This is also simple with help of C<MIME::Lite>
+This is also simple with help of L<MIME::Lite>
 
 	use MIME::Lite;
 	
@@ -619,7 +621,7 @@ This is also simple with help of C<MIME::Lite>
 =head2 How to send message with BIG attachment
 
 It will be not cool to get message with 50 mb attachment into memory before sending.
-Fortunetly with help of C<MIME::Lite> and C<MIME::Lite::Generator> we can generate
+Fortunately with help of L<MIME::Lite> and L<MIME::Lite::Generator> we can generate
 our email by small portions. As you remember C<data> command accepts subroutine reference
 as argument, so it will be super easy to send our big email in memory-efficient way
 
@@ -642,12 +644,12 @@ as argument, so it will be super easy to send our big email in memory-efficient 
 		data => sub { $generator->get() }
 	);
 
-=head2 How to send message directly without using of MTA such as sendmail, postfix, exim, ...
+=head2 How to send message directly, without using of MTAs such as sendmail, postfix, exim, ...
 
 Sometimes it is more suitable to send message directly to SMTP server of recipient. For example
 if you haven't any MTA available or want to check recipient's server responses (e.g. to know is
 such user exists on this server). First you need to know address of necessary SMTP server. We'll
-get it with help of C<Net::DNS>. Then we'll send it as usual
+get it with help of L<Net::DNS>. Then we'll send it as usual
 
 	# will use non-blocking approach in this example
 	use strict;
