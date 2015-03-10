@@ -79,7 +79,7 @@ $smtp->send(
 			to   => 'root@2gis.com',
 			data => sub {
 				read(DATA, my $buf, 64);
-				return $buf;
+				return \$buf;
 			},
 			quit => 1,
 			sub {

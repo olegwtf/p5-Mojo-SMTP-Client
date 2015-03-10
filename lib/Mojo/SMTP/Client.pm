@@ -163,7 +163,7 @@ sub send {
 					return undef $data_writer;
 				}
 				
-				$was_nl = $data =~ /\012$/;
+				$was_nl = _has_nl($data);
 				$self->{stream}->write(ref $data ? $$data : $data, $data_writer);
 			};
 			
@@ -186,7 +186,7 @@ sub send {
 				}
 				
 				$self->_set_errors_handler(undef);
-				$self->_cmd(($data =~ /\012$/ ? '' : CRLF).'.', CMD_DATA_END);
+				$self->_cmd((_has_nl($data) ? '' : CRLF).'.', CMD_DATA_END);
 				$self->_read_response($delay->begin);
 				$expected_code = CMD_OK;
 			},
@@ -305,6 +305,13 @@ sub _parse_response {
 	}
 	
 	return {code => $code, messages => \@msg};
+}
+
+sub _has_nl {
+	if (ref $_[0]) {
+		return ${$_[0]} =~ /\012$/;
+	}
+	$_[0] =~ /\012$/;
 }
 
 1;
