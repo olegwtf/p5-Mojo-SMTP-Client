@@ -490,7 +490,7 @@ or reference to array with email strings (for more than one recipient)
 
 Email body to be sent. Value for this command should be a string (or reference to a string) with email body or reference to subroutine
 each call of which should return some chunk of the email as string (or reference to a string) and empty string (or reference to a string)
-at the end (useful to send big emails in memory efficient way)
+at the end (useful to send big emails in memory-efficient way)
 
 	$smtp->send(data => "Subject: This is my first message\r\n\r\nSent from Mojolicious app");
 	$smtp->send(data => sub { sysread(DATA, my $buf, 1024); $buf });
@@ -569,7 +569,7 @@ ASCII message is simple enough, so you can generate it by hands
 	);
 
 However it is not recommended to generate emails by hand if you are not
-familar with MIME. For more convenient approaches see below.
+familar with MIME standard. For more convenient approaches see below.
 
 =head2 How to send text message with possible non-ASCII characters
 
@@ -598,7 +598,7 @@ email as a string and send it with C<Mojo::SMTP::Client>
 
 =head2 How to send message with attachment
 
-This is also simple with C<MIME::Lite>
+This is also simple with help of C<MIME::Lite>
 
 	use MIME::Lite;
 	
@@ -642,7 +642,7 @@ as argument, so it will be super easy to send our big email in memory-efficient 
 		data => sub { $generator->get() }
 	);
 
-=head2 How to send message directly without using MTA such as sendmail, postfix, exim, ...
+=head2 How to send message directly without using of MTA such as sendmail, postfix, exim, ...
 
 Sometimes it is more suitable to send message directly to SMTP server of recipient. For example
 if you haven't any MTA available or want to check recipient's server responses (e.g. to know is
