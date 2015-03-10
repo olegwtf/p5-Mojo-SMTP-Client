@@ -5,7 +5,7 @@ use Mojo::IOLoop;
 use Mojo::IOLoop::Delay;
 use Mojo::SMTP::Client::Exception;
 
-our $VERSION = 0.01;
+our $VERSION = 0.02;
 
 use constant {
 	CMD_OK       => 2,
