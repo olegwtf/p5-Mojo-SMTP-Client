@@ -23,6 +23,17 @@ use constant {
 	CRLF         => "\x0d\x0a",
 };
 
+our %CMD = (
+	&CMD_CONNECT  => 'CMD_CONNECT',
+	&CMD_EHLO     => 'CMD_EHLO',
+	&CMD_HELO     => 'CMD_HELO',
+	&CMD_FROM     => 'CMD_FROM',
+	&CMD_TO       => 'CMD_TO',
+	&CMD_DATA     => 'CMD_DATA',
+	&CMD_DATA_END => 'CMD_DATA_END',
+	&CMD_QUIT     => 'CMD_QUIT',
+);
+
 has address            => 'localhost';
 has port               => 25;
 has hello              => 'localhost.localdomain';
@@ -522,6 +533,20 @@ C<Mojo::SMTP::Client> has this non-importable constants
 	CMD_DATA_END # client sent . command
 	CMD_QUIT     # client sent QUIT command
 
+=head1 VARIABLES
+
+C<Mojo::SMTP::Client> has this non-importable variables
+
+=over
+
+=item %CMD
+
+Get human readable command by it constant
+
+	print $Mojo::SMTP::Client::CMD{ Mojo::SMTP::Client::CMD_EHLO };
+
+=back
+
 =head1 COOKBOOK
 
 =head2 How to send simple ASCII message
@@ -616,6 +641,86 @@ as argument, so it will be super easy to send our big email in memory-efficient 
 		to   => 'you@work.org',
 		data => sub { $generator->get() }
 	);
+
+=head2 How to send message directly without using MTA such as sendmail, postfix, exim, ...
+
+Sometimes it is more suitable to send message directly to SMTP server of recipient. For example
+if you haven't any MTA available or want to check recipient's server responses (e.g. to know is
+such user exists on this server). First you need to know address of necessary SMTP server. We'll
+get it with help of C<Net::DNS>. Then we'll send it as usual
+
+	# will use non-blocking approach in this example
+	use strict;
+	use MIME::Lite;
+	use Net::DNS;
+	use Mojo::SMTP::Client;
+	use Mojo::IOLoop;
+	
+	use constant TO => 'oleg@cpan.org';
+	
+	my $loop = Mojo::IOLoop->singleton;
+	my $resolver = Net::DNS::Resolver->new();
+	my ($domain) = TO =~ /@(.+)/;
+	
+	# Get MX records
+	my $sock = $resolver->bgsend($domain, 'MX');
+	$loop->reactor->io($sock => sub {
+		my $packet = $resolver->bgread($sock);
+		$loop->reactor->remove($sock);
+		
+		my @mx;
+		if ($packet) {
+			for my $rec ($packet->answer) {
+				push @mx, $rec->exchange if $rec->type eq 'MX';
+			}
+		}
+		
+		# Will try with first or plain domain name if no mx records found
+		my $address = @mx ? $mx[0] : $domain;
+		
+		my $smtp = Mojo::SMTP::Client->new(
+			address => $address,
+			# it is important properly identify yourself
+			hello   => 'home.org'
+		);
+		
+		my $msg = MIME::Lite->new(
+			Type    => 'text',
+			From    => 'me@home.org',
+			To      => TO,
+			Subject => 'Direct email',
+			Data    => 'Get it!'
+		);
+		
+		$smtp->on(response => sub {
+			# some debug
+			my ($smtp, $cmd, $resp) = @_;
+			
+			print ">>", $Mojo::SMTP::Client::CMD{$cmd}, "\n";
+			print "<<", $resp->{code}, " ", join("\n", @{$resp->{messages}}), "\n";
+		});
+		
+		$smtp->send(
+			from => 'me@home.org',
+			to   => TO,
+			data => $msg->as_string,
+			quit => 1,
+			sub {
+				my ($smtp, $resp) = @_;
+				
+				warn $resp->{error} ? 'Failed to send: '.$resp->{error} :
+				                      'Sent successfully with code: ', $resp->{code};
+				
+				$loop->stop;
+			}
+		);
+	});
+	$loop->reactor->watch($sock, 1, 0);
+	
+	$loop->start;
+
+Note: some servers may check your PTR record, availability of SMTP server
+on your domain and so on.
 
 =head1 SEE ALSO
 
