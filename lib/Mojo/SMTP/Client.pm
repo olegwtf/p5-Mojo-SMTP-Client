@@ -155,7 +155,7 @@ sub send {
 				
 				my $data = $data_generator->();
 				
-				unless (length($data) > 0) {
+				unless (length(ref $data ? $$data : $data) > 0) {
 					$self->_cmd(($was_nl ? '' : CRLF).'.', CMD_DATA_END);
 					$self->_read_response($data_writer_cb);
 					$self->_set_errors_handler(undef);
@@ -164,7 +164,7 @@ sub send {
 				}
 				
 				$was_nl = $data =~ /\012$/;
-				$self->{stream}->write($data, $data_writer);
+				$self->{stream}->write(ref $data ? $$data : $data, $data_writer);
 			};
 			
 			push @steps, $data_writer, $resp_checker;
@@ -174,7 +174,7 @@ sub send {
 			push @steps, sub {
 				my $delay = shift;
 				my $data_writer_cb = $delay->begin;
-				$self->{stream}->write($data, $data_writer_cb);
+				$self->{stream}->write(ref $data ? $$data : $data, $data_writer_cb);
 				$self->_set_errors_handler(sub {
 					$data_writer_cb->(@_);
 				});
@@ -470,9 +470,9 @@ or reference to array with email strings (for more than one recipient)
 
 =item data
 
-Email body to be sent. Value for this command should be a string with email body or reference to subroutine
-each call of which should return some chunk of the email as string and empty string at the end (useful to send
-big emails in memory efficient way)
+Email body to be sent. Value for this command should be a string (or reference to a string) with email body or reference to subroutine
+each call of which should return some chunk of the email as string (or reference to a string) and empty string (or reference to a string)
+at the end (useful to send big emails in memory efficient way)
 
 	$smtp->send(data => "Subject: This is my first message\r\n\r\nSent from Mojolicious app");
 	$smtp->send(data => sub { sysread(DATA, my $buf, 1024); $buf });
