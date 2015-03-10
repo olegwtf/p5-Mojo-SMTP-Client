@@ -17,30 +17,22 @@ sub make_smtp_server {
 		or die $!;
 	
 	if ($child == 0) {
-		my $clt = $srv->accept() or next;
-		e_syswrite($sock2, 'CONNECT'.CRLF);
-		
-		while (my $resp = <$sock2>) {
-			e_syswrite($clt, $resp) && DEBUG && warn "<- $resp" if $resp =~ /^\d+/;
-			next if $resp =~ /^\d+-/;
-			my $cmd = e_getline($clt);
-			warn "-> $cmd" if DEBUG;
-			e_syswrite($sock2, $cmd);
+		while (1) {
+			my $clt = $srv->accept() or next;
+			syswrite($sock2, 'CONNECT'.CRLF);
+			
+			while (my $resp = <$sock2>) {
+				syswrite($clt, $resp) && DEBUG && warn "<- $resp" if $resp =~ /^\d+/;
+				next if $resp =~ /^\d+-/;
+				my $cmd = <$clt> or last;
+				warn "-> $cmd" if DEBUG;
+				syswrite($sock2, $cmd);
+			}
 		}
 		exit;
 	}
 	
 	return ($child, $sock1, $srv->sockhost eq '0.0.0.0' ? '127.0.0.1' : $srv->sockhost, $srv->sockport);
-}
-
-sub e_syswrite {
-	my $hdl = shift;
-	$hdl->syswrite(@_) or exit;
-}
-
-sub e_getline {
-	my $hdl = shift;
-	$hdl->getline() or exit;
 }
 
 1;

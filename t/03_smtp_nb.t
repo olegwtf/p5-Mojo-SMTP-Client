@@ -10,9 +10,14 @@ if ($^O eq 'MSWin32') {
 	plan skip_all => 'fork() support required';
 }
 
+# 1
 my $loop = Mojo::IOLoop->singleton;
 my ($pid, $sock, $host, $port) = Utils::make_smtp_server();
 my $smtp = Mojo::SMTP::Client->new(address => $host, port => $port);
+my $connections = 0;
+$smtp->on(start => sub {
+	$connections++;
+});
 $smtp->send(sub {
 	my $resp = pop;
 	ok(!$resp->{error}, 'no error');
@@ -45,23 +50,29 @@ $loop->reactor->io($sock => sub {
 });
 $loop->reactor->watch($sock, 1, 0);
 $loop->start;
+is($connections, 1, 'right connections count');
 close $sock;
 kill 15, $pid;
 
-
+# 2
 ($pid, $sock, $host, $port) = Utils::make_smtp_server();
 $smtp = Mojo::SMTP::Client->new(address => $host, port => $port, hello => 'dragon-host.net');
+$connections = 0;
+$smtp->on(start => sub {
+	$connections++;
+});
 $smtp->send(
 	from => 'foo@bar.net',
 	to   => 'robert@mail.ru',
 	data => "From: foo\@bar.net\r\nTo: robert\@mail.ru\r\nSubject: Hello!\r\n\r\nHello world",
+	quit => 1,
 	sub {
 		my ($smtp, $resp) = @_;
 		isa_ok($smtp, 'Mojo::SMTP::Client');
 		ok(!$resp->{error}, 'no error');
 		is($resp->{code}, 224, 'right code');
-		is($resp->{messages}[0], 'Message sent', 'right message 1');
-		is($resp->{messages}[1], 'You can send one more', 'right message 2');
+		is($resp->{messages}[0], 'Connection closed', 'right message 1');
+		is($resp->{messages}[1], 'See you again', 'right message 2');
 		
 		$smtp->send(
 			from => 'jora@foo.net',
@@ -94,7 +105,10 @@ $i = -2;
 	'Subject: Hello!' => '.',
 	'' => '.',
 	'Hello world' => '.',
-	'.' => '224-Message sent'.CRLF.'224 You can send one more',
+	'.' => '220',
+	'QUIT' => '224-Connection closed'.CRLF.'224 See you again',
+	'CONNECT' => '220 CONNECT OK',
+	'EHLO dragon-host.net' => '203 HELLO!!!!',
 	'MAIL FROM:<jora@foo.net>' => '222 sender ok',
 	'RCPT TO:<root@2gis.com>' => '223 rcpt ok',
 	'DATA' => '331 send data, please',
@@ -110,13 +124,16 @@ my @cmd_const = (
 	Mojo::SMTP::Client::CMD_TO,
 	Mojo::SMTP::Client::CMD_DATA,
 	Mojo::SMTP::Client::CMD_DATA_END,
+	Mojo::SMTP::Client::CMD_QUIT,
+	Mojo::SMTP::Client::CMD_CONNECT,
+	Mojo::SMTP::Client::CMD_EHLO,
 	Mojo::SMTP::Client::CMD_FROM,
 	Mojo::SMTP::Client::CMD_TO,
 	Mojo::SMTP::Client::CMD_DATA,
 	Mojo::SMTP::Client::CMD_DATA_END,
 	Mojo::SMTP::Client::CMD_QUIT,
 );
-my @responses = grep { /^\d+[\s-]/ } @cmd;
+my @responses = grep { /^\d+(?:[\s-]|$)/ } @cmd;
 seek DATA, $data_pos, 0;
 
 my $resp_cnt = 0;
@@ -129,6 +146,7 @@ $smtp->on(response => sub {
 		$resp_str .= $resp->{code} . ($i == $#{$resp->{messages}} ? ' ' : '-') . $resp->{messages}[$i];
 		$resp_str .= CRLF unless $i == $#{$resp->{messages}};
 	}
+	$resp_str = $resp->{code} unless $resp_str;
 	
 	is($resp_str, $responses[$resp_cnt], 'right response');
 	$resp_cnt++;
@@ -143,9 +161,11 @@ $loop->reactor->io($sock => sub {
 $loop->reactor->watch($sock, 1, 0);
 $loop->start;
 is($resp_cnt, @cmd_const, 'right response count');
+is($connections, 2, 'right connections count');
 close $sock;
 kill 15, $pid;
 
+# 3
 my ($pid1, $sock1, $host1, $port1) = Utils::make_smtp_server();
 my ($pid2, $sock2, $host2, $port2) = Utils::make_smtp_server();
 

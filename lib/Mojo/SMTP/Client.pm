@@ -57,6 +57,7 @@ sub send {
 		push @steps, sub {
 			my $delay = shift;
 			# connect
+			$self->emit('start');
 			$self->{server} = $self->_server;
 			$self->{last_cmd} = CMD_CONNECT;
 			$self->_ioloop($nb)->client(
@@ -330,7 +331,7 @@ Mojo::SMTP::Client - non-blocking SMTP client based on Mojo::IOLoop
 		                     'Subject: Hello world!',
 		                     '',
 		                     'This is my first message!'
-	            ),
+		        ),
 		quit => 1
 	);
 	warn "Sent successfully"; # else will throw exception because of `autodie'
@@ -371,10 +372,24 @@ blocking of C<Mojo::IOLoop>.
 
 C<Mojo::SMTP::Client> inherits all events from L<Mojo::EventEmitter> and can emit the following new ones
 
+=head2 start
+
+	$smtp->on(start => sub {
+		my ($smtp) = @_;
+		# some servers delays first response to prevent SPAM
+		$smtp->inactivity_timeout(5*60);
+	});
+
+Emitted whenever a new connection is about to start.
+
 =head2 response
 
 	$smtp->on(response => sub {
 		my ($smtp, $cmd, $resp) = @_;
+		if ($cmd == Mojo::SMTP::Client::CMD_CONNECT) {
+			# and after first response others should be fast enough
+			$smtp->inactivity_timeout(10);
+		}
 	});
 
 Emitted for each SMTP response from the server. C<$cmd> is a command L<constant|/CONSTANTS> for which this
