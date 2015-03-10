@@ -314,7 +314,7 @@ __END__
 
 =head1 NAME
 
-Mojo::SMTP::Client - SMTP client based on Mojo::IOLoop
+Mojo::SMTP::Client - non-blocking SMTP client based on Mojo::IOLoop
 
 =head1 SYNOPSIS
 
