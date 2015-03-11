@@ -539,6 +539,21 @@ For blocking usage C<$resp> will be returned as result of C<$smtp-E<gt>send> cal
 non-blocking result. If L</autodie> attribute has true value C<send> will throw an exception on any error.
 Which will be one of C<Mojo::SMTP::Client::Exception::*>.
 
+B<Note>. For SMTP protocol it is important to send commands in certain order. Also C<send> will send all commands in order you are
+specified. So, it is important to pass arguments to C<send> in right order. For basic usage this will always be:
+C<from -E<gt> to -E<gt> data -E<gt> quit>. You should also know that it is absolutely correct to specify several non-unique commands.
+For example you can send several emails with one C<send> call:
+
+	$smtp->send(
+		from => 'someone@somewhere.com',
+		to   => 'somebody@somewhere.net',
+		data => $mail_1,
+		from => 'frodo@somewhere.com',
+		to   => 'garry@somewhere.net',
+		data => $mail_2,
+		quit => 1
+	);
+
 B<Note>. Connection to SMTP server will be made on first C<send> or for each C<send> when socket connection not already estabilished
 (was closed by C<QUIT> command or errors in the stream). It is error to make several simultaneous non-blocking C<send> calls on the
 same C<Mojo::SMTP::Client>, because each client has one global stream per client. So, you need to create several
@@ -705,7 +720,7 @@ get it with help of L<Net::DNS>. Then we'll send it as usual
 		
 		my $smtp = Mojo::SMTP::Client->new(
 			address => $address,
-			# it is important properly identify yourself
+			# it is important to properly identify yourself
 			hello   => 'home.org'
 		);
 		
