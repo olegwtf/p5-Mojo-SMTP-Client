@@ -505,7 +505,7 @@ or reference to array with email strings (for more than one recipient)
 
 =item reset
 
-After this command server should forgive about any started mail transaction and reset it status as it was after response to C<EHLO>/C<HELO>.
+After this command server should forget about any started mail transaction and reset it status as it was after response to C<EHLO>/C<HELO>.
 Note: transaction considered started after C<MAIL FROM> (C<from>) command.
 
 	$smtp->send(reset => 1);
