@@ -4,6 +4,7 @@ use Mojo::Base 'Mojo::EventEmitter';
 use Mojo::IOLoop;
 use Mojo::IOLoop::Delay;
 use Mojo::SMTP::Client::Exception;
+use Carp;
 
 our $VERSION = 0.02;
 
@@ -18,7 +19,8 @@ use constant {
 	CMD_TO       => 5,
 	CMD_DATA     => 6,
 	CMD_DATA_END => 7,
-	CMD_QUIT     => 8,
+	CMD_RESET    => 8,
+	CMD_QUIT     => 9,
 	
 	CRLF         => "\x0d\x0a",
 };
@@ -31,6 +33,7 @@ our %CMD = (
 	&CMD_TO       => 'CMD_TO',
 	&CMD_DATA     => 'CMD_DATA',
 	&CMD_DATA_END => 'CMD_DATA_END',
+	&CMD_RESET    => 'CMD_RESET',
 	&CMD_QUIT     => 'CMD_QUIT',
 );
 
@@ -42,10 +45,18 @@ has inactivity_timeout => sub { $ENV{MOJO_INACTIVITY_TIMEOUT} // 20 };
 has ioloop             => sub { Mojo::IOLoop->new };
 has autodie            => 0;
 
+my %cmd = (
+	from  => 1,
+	to    => 1,
+	data  => 1,
+	reset => 1,
+	quit  => 1,
+);
+
 sub send {
 	my $self = shift;
 	my $cb = @_ % 2 == 0 ? undef : pop;
-	my %cmd = @_;
+	my @cmd = @_;
 	
 	my @steps;
 	my $expected_code;
@@ -115,113 +126,117 @@ sub send {
 		$self->{stream}->start;
 	}
 	
-	if (exists $cmd{from}) {
-		# FROM
-		my $from = delete $cmd{from};
-		push @steps, sub {
-			my $delay = shift;
-			$self->_cmd('MAIL FROM:<'.$from.'>', CMD_FROM);
-			$self->_read_response($delay->begin);
-			$expected_code = CMD_OK;
-		},
-		$resp_checker
-	}
-	if (exists $cmd{to}) {
-		# TO
-		for my $to (ref $cmd{to} ? @{$cmd{to}} : $cmd{to}) {
+	for (my $i=0; $i<@cmd; $i+=2) {
+		my $mi = $i+1;
+		
+		if ($cmd[$i] eq 'from') { # FROM
 			push @steps, sub {
 				my $delay = shift;
-				$self->_cmd('RCPT TO:<'.$to.'>', CMD_TO);
+				$self->_cmd('MAIL FROM:<'.$cmd[$mi].'>', CMD_FROM);
 				$self->_read_response($delay->begin);
 				$expected_code = CMD_OK;
 			},
 			$resp_checker
 		}
-		delete $cmd{to};
-	}
-	if (exists $cmd{data}) {
-		# DATA
-		push @steps, sub {
-			my $delay = shift;
-			$self->_cmd('DATA', CMD_DATA);
-			$self->_read_response($delay->begin);
-			$expected_code = CMD_MORE;
-		},
-		$resp_checker;
-		
-		if (ref $cmd{data} eq 'CODE') {
-			my ($data_writer, $data_writer_cb);
-			my $data_generator = delete $cmd{data};
-			my $was_nl;
-			
-			$data_writer = sub {
-				my $delay = shift;
-				unless ($data_writer_cb) {
-					$data_writer_cb = $delay->begin;
-					$self->_set_errors_handler(sub {
-						$data_writer_cb->($delay, @_);
-						undef $data_writer;
-					});
-				}
-				
-				my $data = $data_generator->();
-				
-				unless (length(ref $data ? $$data : $data) > 0) {
-					$self->_cmd(($was_nl ? '' : CRLF).'.', CMD_DATA_END);
-					$self->_read_response($data_writer_cb);
-					$self->_set_errors_handler(undef);
+		elsif ($cmd[$i] eq 'to') { # TO
+			for my $to (ref $cmd[$mi] ? @{$cmd[$mi]} : $cmd[$mi]) {
+				push @steps, sub {
+					my $delay = shift;
+					$self->_cmd('RCPT TO:<'.$to.'>', CMD_TO);
+					$self->_read_response($delay->begin);
 					$expected_code = CMD_OK;
-					return undef $data_writer;
-				}
-				
-				$was_nl = _has_nl($data);
-				$self->{stream}->write(ref $data ? $$data : $data, $data_writer);
-			};
+				},
+				$resp_checker
+			}
+		}
+		elsif ($cmd[$i] eq 'data') { # DATA
+			# DATA
+			push @steps, sub {
+				my $delay = shift;
+				$self->_cmd('DATA', CMD_DATA);
+				$self->_read_response($delay->begin);
+				$expected_code = CMD_MORE;
+			},
+			$resp_checker;
 			
-			push @steps, $data_writer, $resp_checker;
+			if (ref $cmd[$mi] eq 'CODE') {
+				my ($data_writer, $data_writer_cb);
+				my $was_nl;
+				
+				$data_writer = sub {
+					my $delay = shift;
+					unless ($data_writer_cb) {
+						$data_writer_cb = $delay->begin;
+						$self->_set_errors_handler(sub {
+							$data_writer_cb->($delay, @_);
+							undef $data_writer;
+						});
+					}
+					
+					my $data = $cmd[$mi]->();
+					
+					unless (length(ref $data ? $$data : $data) > 0) {
+						$self->_cmd(($was_nl ? '' : CRLF).'.', CMD_DATA_END);
+						$self->_read_response($data_writer_cb);
+						$self->_set_errors_handler(undef);
+						$expected_code = CMD_OK;
+						return undef $data_writer;
+					}
+					
+					$was_nl = _has_nl($data);
+					$self->{stream}->write(ref $data ? $$data : $data, $data_writer);
+				};
+				
+				push @steps, $data_writer, $resp_checker;
+			}
+			else {
+				push @steps, sub {
+					my $delay = shift;
+					my $data_writer_cb = $delay->begin;
+					$self->{stream}->write(ref $cmd[$mi] ? ${$cmd[$mi]} : $cmd[$mi], $data_writer_cb);
+					$self->_set_errors_handler(sub {
+						$data_writer_cb->(@_);
+					});
+				},
+				sub {
+					my ($delay, $resp) = @_;
+					if ($resp && $resp->{error}) {
+						die $resp->{error};
+					}
+					
+					$self->_set_errors_handler(undef);
+					$self->_cmd((_has_nl($cmd[$mi]) ? '' : CRLF).'.', CMD_DATA_END);
+					$self->_read_response($delay->begin);
+					$expected_code = CMD_OK;
+				},
+				$resp_checker
+			}
+		}
+		elsif ($cmd[$i] eq 'reset') { # RESET
+			push @steps, sub {
+				my $delay = shift;
+				$self->_cmd('RSET', CMD_RESET);
+				$self->_read_response($delay->begin);
+				$expected_code = CMD_OK;
+			},
+			$resp_checker
+		}
+		elsif ($cmd[$i] eq 'quit') { # QUIT
+			push @steps, sub {
+				my $delay = shift;
+				$self->_cmd('QUIT', CMD_QUIT);
+				$self->_read_response($delay->begin);
+				$expected_code = CMD_OK;
+			},
+			$resp_checker, sub {
+				my $delay = shift;
+				delete($self->{stream})->close;
+				$delay->pass(@_);
+			}
 		}
 		else {
-			my $data = delete $cmd{data};
-			push @steps, sub {
-				my $delay = shift;
-				my $data_writer_cb = $delay->begin;
-				$self->{stream}->write(ref $data ? $$data : $data, $data_writer_cb);
-				$self->_set_errors_handler(sub {
-					$data_writer_cb->(@_);
-				});
-			},
-			sub {
-				my ($delay, $resp) = @_;
-				if ($resp && $resp->{error}) {
-					die $resp->{error};
-				}
-				
-				$self->_set_errors_handler(undef);
-				$self->_cmd((_has_nl($data) ? '' : CRLF).'.', CMD_DATA_END);
-				$self->_read_response($delay->begin);
-				$expected_code = CMD_OK;
-			},
-			$resp_checker
+			croak 'unrecognized command: ', $cmd[$i];
 		}
-	}
-	if (exists $cmd{quit}) {
-		# QUIT
-		delete $cmd{quit};
-		push @steps, sub {
-			my $delay = shift;
-			$self->_cmd('QUIT', CMD_QUIT);
-			$self->_read_response($delay->begin);
-			$expected_code = CMD_OK;
-		},
-		$resp_checker, sub {
-			my $delay = shift;
-			delete($self->{stream})->close;
-			$delay->pass(@_);
-		};
-	}
-	
-	if (%cmd) {
-		die "unrecognized commands specified: ", join(", ", keys %cmd);
 	}
 	
 	# non-blocking
@@ -488,6 +503,13 @@ or reference to array with email strings (for more than one recipient)
 	$smtp->send(to => 'oleg@cpan.org');
 	$smtp->send(to => ['oleg@cpan.org', 'do_not_reply@cpantesters.org']);
 
+=item reset
+
+After this command server should forgive about any started mail transaction and reset it status as it was after response to C<EHLO>/C<HELO>.
+Note: transaction considered started after C<MAIL FROM> (C<from>) command.
+
+	$smtp->send(reset => 1);
+
 =item data
 
 Email body to be sent. Value for this command should be a string (or reference to a string) with email body or reference to subroutine
@@ -533,6 +555,7 @@ C<Mojo::SMTP::Client> has this non-importable constants
 	CMD_TO       # client sent RCPT TO command
 	CMD_DATA     # client sent DATA command
 	CMD_DATA_END # client sent . command
+	CMD_RESET    # client sent RSET command
 	CMD_QUIT     # client sent QUIT command
 
 =head1 VARIABLES
@@ -553,7 +576,7 @@ Get human readable command by it constant
 
 =head2 How to send simple ASCII message
 
-ASCII message is simple enough, so you can generate it by hands
+ASCII message is simple enough, so you can generate it by hand
 
 	$smtp->send(
 		from => 'me@home.org',
