@@ -1,5 +1,10 @@
 Revision history for Perl extension Mojo::SMTP::Client
 
+0.03  Wed Mar 11 22:55:12 NOVT 2015
+    - new `reset' command for `send'
+    - now order of commands for `send' is important
+    - you can send several non-unique commands with one `send' call
+
 0.02  Tue Mar 10 22:37:21 NOVT 2015
     - `start' event added
     - allow argument for `data' command to be a reference to a string

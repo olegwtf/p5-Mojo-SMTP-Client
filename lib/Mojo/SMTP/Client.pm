@@ -6,7 +6,7 @@ use Mojo::IOLoop::Delay;
 use Mojo::SMTP::Client::Exception;
 use Carp;
 
-our $VERSION = 0.02;
+our $VERSION = 0.03;
 
 use constant {
 	CMD_OK       => 2,
