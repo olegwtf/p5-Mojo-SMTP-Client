@@ -174,10 +174,13 @@ my $smtp2 = Mojo::SMTP::Client->new(address => $host2, port => $port2, inactivit
 my $clients = 2;
 
 $smtp1->send(
-	from => 'root1@2gis.ru',
-	to   => 'jora1@2gis.ru',
-	data => '123',
-	quit => 1,
+	from  => 'root1@2gis.ru',
+	to    => 'jora1@2gis.ru',
+	reset => 1,
+	from  => 'foo@2gis.com',
+	to    => 'bar@2gis.kz',
+	data  => '123',
+	quit  => 1,
 	sub {
 		my $resp = pop;
 		ok(!$resp->{error}, 'no error for client 1');
@@ -192,6 +195,9 @@ my @cmd1 = (
 	'EHLO localhost.localdomain',
 	'MAIL FROM:<root1@2gis.ru>',
 	'RCPT TO:<jora1@2gis.ru>',
+	'RSET',
+	'MAIL FROM:<foo@2gis.com>',
+	'RCPT TO:<bar@2gis.kz>',
 	'DATA',
 	'123',
 	'.',
