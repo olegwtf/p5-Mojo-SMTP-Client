@@ -242,7 +242,7 @@ $loop->reactor->io($sock1 => sub {
 	$cmd =~ s/\s+$//;
 	
 	is($cmd, $cmd1[$i1++], 'right cmd for client 1');
-	syswrite($sock1, ($cmd eq 'DATA' ? '320 OK' : '220 OK').CRLF);
+	syswrite($sock1, ($cmd eq 'DATA' ? '320 OK' : ($cmd eq '123' ? '.' : '220 OK')).CRLF);
 });
 
 my $i2 = 0;
@@ -259,7 +259,7 @@ $loop->reactor->io($sock2 => sub {
 		});
 	}
 	else {
-		syswrite($sock2, ($cmd eq 'DATA' ? '320 OK' : '220 OK').CRLF);
+		syswrite($sock2, ($cmd eq 'DATA' ? '320 OK' : ($cmd eq '321' ? '.' : '220 OK')).CRLF);
 	}
 });
 
@@ -304,7 +304,7 @@ $loop->reactor->io($sock => sub {
 	$cmd =~ s/\s+$//;
 	
 	is($cmd, $cmd[$i++], 'right cmd for client');
-	syswrite($sock, ($cmd eq 'DATA' ? '320 OK' : '220 OK').CRLF);
+	syswrite($sock, ($cmd eq 'DATA' ? '320 OK' : ($cmd eq '.' ? '220 OK!quit' : ($cmd eq '321123' ? '.' : "220 $cmd OK"))).CRLF);
 });
 $smtp->send(
 	from => 'filya@sp.ru',
@@ -313,7 +313,7 @@ $smtp->send(
 	sub {
 		my $resp = pop;
 		ok(!$resp->{error}, 'no error');
-		syswrite($sock, '!quit'.CRLF);
+		is($resp->{messages}[0], 'OK!quit', 'right message');
 		
 		Mojo::IOLoop->timer(0.2 => sub {
 			$smtp->hello('foo.bar');
@@ -323,7 +323,9 @@ $smtp->send(
 				reset => 1,
 				quit  => 1,
 				sub {
+					my $resp = pop;
 					ok(!$resp->{error}, 'no error');
+					is($resp->{messages}[0], 'QUIT OK', 'right message');
 					$loop->stop;
 				}
 			);
