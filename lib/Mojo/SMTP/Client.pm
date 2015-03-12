@@ -437,11 +437,11 @@ with object method call
 
 =head2 address
 
-Address for SMTP server (ip or domain name). Default is C<localhost>
+Address of SMTP server (ip or domain name). Default is C<localhost>
 
 =head2 port
 
-Port for SMTP server. Default is C<25>
+Port of SMTP server. Default is C<25>
 
 =head2 hello
 
@@ -513,7 +513,7 @@ Note: transaction considered started after C<MAIL FROM> (C<from>) command.
 =item data
 
 Email body to be sent. Value for this command should be a string (or reference to a string) with email body or reference to subroutine
-each call of which should return some chunk of the email as string (or reference to a string) and empty string (or reference to a string)
+each call of which should return some chunk of the email as string (or reference to a string) and empty string (or reference to empty string)
 at the end (useful to send big emails in memory-efficient way)
 
 	$smtp->send(data => "Subject: This is my first message\r\n\r\nSent from Mojolicious app");
@@ -686,8 +686,8 @@ as argument, so it will be super easy to send our big email in memory-efficient 
 
 Sometimes it is more suitable to send message directly to SMTP server of recipient. For example
 if you haven't any MTA available or want to check recipient's server responses (e.g. to know is
-such user exists on this server). First you need to know address of necessary SMTP server. We'll
-get it with help of L<Net::DNS>. Then we'll send it as usual
+such user exists on this server [see L<Mojo::Email::Checker::SMTP>]). First you need to know address
+of necessary SMTP server. We'll get it with help of L<Net::DNS>. Then we'll send it as usual
 
 	# will use non-blocking approach in this example
 	use strict;
