@@ -335,7 +335,7 @@ $smtp->send(
 
 $loop->reactor->watch($sock, 1, 0);
 $loop->start;
-is($connections, 2, 'proper connection count');
+is($connections, 2, 'proper connections count');
 close $sock;
 kill 15, $pid;
 

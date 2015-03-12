@@ -2,7 +2,9 @@ package Mojo::SMTP::Client;
 
 use Mojo::Base 'Mojo::EventEmitter';
 use Mojo::IOLoop;
+use Mojo::IOLoop::Client;
 use Mojo::IOLoop::Delay;
+use Mojo::IOLoop::Stream;
 use Mojo::SMTP::Client::Exception;
 use Carp;
 
@@ -84,19 +86,27 @@ sub send {
 			$self->emit('start');
 			$self->{server} = $self->_server;
 			$self->{last_cmd} = CMD_CONNECT;
-			$self->_ioloop($nb)->client(
+			
+			my $connect_cb = $delay->begin;
+			$self->{client} = Mojo::IOLoop::Client->new(reactor => $self->_ioloop($nb)->reactor);
+			$self->{client}->on(connect => $connect_cb);
+			$self->{client}->on(error => $connect_cb);
+			$self->{client}->connect(
 				address => $self->address,
 				port    => $self->port,
-				timeout => $self->connect_timeout,
-				$delay->begin
-			)
+				timeout => $self->connect_timeout
+			);
 		},
 		sub {
 			# read response
-			my ($delay, $err, $stream) = @_;
-			Mojo::SMTP::Client::Exception::Stream->throw($err) if $err;
+			my $delay = shift;
+			delete $self->{client};
+			# check is this a handle
+			Mojo::SMTP::Client::Exception::Stream->throw($_[0]) unless eval { *{$_[0]} };
 			
-			$self->{stream} = $stream;
+			$self->{stream} = Mojo::IOLoop::Stream->new($_[0]);
+			$self->{stream}->reactor($self->_ioloop($nb)->reactor);
+			$self->{stream}->start;
 			$self->_read_response($delay->begin);
 			$expected_code = CMD_OK;
 		},
@@ -250,6 +260,7 @@ sub send {
 			$self->{stream}->timeout(0);
 			$self->{stream}->stop;
 		}
+		
 		$cb->($self, $_[1]);
 	});
 	
@@ -340,11 +351,6 @@ sub _has_nl {
 		return ${$_[0]} =~ /\012$/;
 	}
 	$_[0] =~ /\012$/;
-}
-
-sub DESTROY {
-	my $self = shift;
-	$self->{stream}->close if $self->{stream};
 }
 
 1;
