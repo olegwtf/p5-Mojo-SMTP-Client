@@ -8,7 +8,7 @@ With Mojo::SMTP::Client you can easily send emails from your Mojolicious applica
 
 DEPENDENCIES
 
-Mojolicious 5.0
+Mojolicious 5.0+
 
 INSTALLATION
 
