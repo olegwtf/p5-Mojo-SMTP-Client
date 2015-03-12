@@ -342,6 +342,11 @@ sub _has_nl {
 	$_[0] =~ /\012$/;
 }
 
+sub DESTROY {
+	my $self = shift;
+	$self->{stream}->close if $self->{stream};
+}
+
 1;
 
 __END__
