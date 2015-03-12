@@ -72,8 +72,10 @@ sub send {
 		$delay->pass($resp);
 	};
 	
-	delete($self->{stream})->close
-		if $self->{stream} && $self->{server} ne $self->_server;
+	if ($self->{stream} && (($self->{server} ne $self->_server) || $self->{stream}->is_readable)) {
+		# user changed SMTP server or server sent smth while it shouldn't
+		delete($self->{stream})->close;
+	}
 	
 	unless ($self->{stream}) {
 		push @steps, sub {

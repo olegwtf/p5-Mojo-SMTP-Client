@@ -272,6 +272,71 @@ close $sock1;
 close $sock2;
 kill 15, $pid1, $pid2;
 
+# 4
+($pid, $sock, $host, $port) = Utils::make_smtp_server();
+$smtp = Mojo::SMTP::Client->new(address => $host, port => $port);
+$connections = 0;
+$i = 0;
+@cmd = (
+	'CONNECT',
+	'EHLO localhost.localdomain',
+	'MAIL FROM:<filya@sp.ru>',
+	'RCPT TO:<k1@mail.ru>',
+	'RCPT TO:<k2@mail.ru>',
+	'RCPT TO:<k3@mail.ru>',
+	'DATA',
+	'321123',
+	'.',
+	'CONNECT',
+	'EHLO foo.bar',
+	'MAIL FROM:<stepa@ru.spb>',
+	'RCPT TO:<dr@sdf.net>',
+	'RSET',
+	'QUIT'
+);
+
+$smtp->on(start => sub {
+	$connections++;
+});
+$loop->reactor->io($sock => sub {
+	my $cmd = <$sock>;
+	return unless $cmd; # socket closed
+	$cmd =~ s/\s+$//;
+	
+	is($cmd, $cmd[$i++], 'right cmd for client');
+	syswrite($sock, ($cmd eq 'DATA' ? '320 OK' : '220 OK').CRLF);
+});
+$smtp->send(
+	from => 'filya@sp.ru',
+	to   => ['k1@mail.ru', 'k2@mail.ru', 'k3@mail.ru'],
+	data => '321123',
+	sub {
+		my $resp = pop;
+		ok(!$resp->{error}, 'no error');
+		syswrite($sock, '!quit'.CRLF);
+		
+		Mojo::IOLoop->timer(0.2 => sub {
+			$smtp->hello('foo.bar');
+			$smtp->send(
+				from  => 'stepa@ru.spb',
+				to    => 'dr@sdf.net',
+				reset => 1,
+				quit  => 1,
+				sub {
+					ok(!$resp->{error}, 'no error');
+					$loop->stop;
+				}
+			);
+		});
+	}
+);
+
+$loop->reactor->watch($sock, 1, 0);
+$loop->start;
+is($connections, 2, 'proper connection count');
+close $sock;
+kill 15, $pid;
+
 done_testing;
 
 __DATA__

@@ -22,6 +22,11 @@ sub make_smtp_server {
 			syswrite($sock2, 'CONNECT'.CRLF);
 			
 			while (my $resp = <$sock2>) {
+				if ($resp eq '!quit'.CRLF) {
+					$clt->close;
+					last;
+				}
+				
 				syswrite($clt, $resp) && DEBUG && warn "<- $resp" if $resp =~ /^\d+/;
 				next if $resp =~ /^\d+-/;
 				my $cmd = <$clt> or last;
