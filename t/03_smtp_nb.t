@@ -312,7 +312,7 @@ $smtp->send(
 	data => '321123',
 	sub {
 		my $resp = pop;
-		ok(!$resp->{error}, 'no error');
+		ok(!$resp->{error}, 'no error') or diag $resp->{error};
 		is($resp->{messages}[0], 'OK!quit', 'right message');
 		
 		Mojo::IOLoop->timer(0.2 => sub {
