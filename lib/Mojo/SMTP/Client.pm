@@ -7,6 +7,7 @@ use Mojo::IOLoop::Delay;
 use Mojo::IOLoop::Stream;
 use Mojo::SMTP::Client::Exception;
 use Carp;
+use Scalar::Util 'weaken';
 
 our $VERSION = 0.03;
 
@@ -104,30 +105,32 @@ sub send {
 		sub {
 			# read response
 			my $delay = shift;
-			delete $self->{client};
+			weaken(my $this = $self);
+			delete $this->{client};
 			# check is this a handle
 			Mojo::SMTP::Client::Exception::Stream->throw($_[0]) unless eval { *{$_[0]} };
 			
+			#weaken(my $this = $this);
 			my $error_handler = sub {
-				delete($self->{cleanup_cb})->() if $self->{cleanup_cb};
-				$delay->steps(); # remove remaining steps
-				$self->_rm_stream();
-				$delay->emit(finish => {error => $_[0]});
+				delete($this->{cleanup_cb})->() if $this->{cleanup_cb};
+				$this->{delay}->steps(); # remove remaining steps
+				$this->_rm_stream();
+				$this->{delay}->emit(finish => {error => $_[0]});
 			};
 			
-			$self->{stream} = Mojo::IOLoop::Stream->new($_[0]);
-			$self->{stream}->reactor($self->_ioloop($nb)->reactor);
-			$self->{stream}->start;
-			$self->{stream}->on(timeout => sub {
+			$this->{stream} = Mojo::IOLoop::Stream->new($_[0]);
+			$this->{stream}->reactor($this->_ioloop($nb)->reactor);
+			$this->{stream}->start;
+			$this->{stream}->on(timeout => sub {
 				$error_handler->(Mojo::SMTP::Client::Exception::Stream->new('Inactivity timeout'));
 			});
-			$self->{stream}->on(error => sub {
-				$error_handler->(Mojo::SMTP::Client::Exception::Stream->new($_[-1]));
+			$this->{stream}->on(error => sub {
+				#$error_handler->(Mojo::SMTP::Client::Exception::Stream->new($_[-1]));
 			});
-			$self->{stream}->on(close => sub {
-				$error_handler->(Mojo::SMTP::Client::Exception::Stream->new('Socket closed unexpectedly by remote side'));
+			$this->{stream}->on(close => sub {
+				#$error_handler->(Mojo::SMTP::Client::Exception::Stream->new('Socket closed unexpectedly by remote side'));
 			});
-			$self->_read_response($delay->begin, 0);
+			$this->_read_response($delay->begin, 0);
 			$expected_code = CMD_OK;
 		},
 		# check response
@@ -265,11 +268,15 @@ sub send {
 	}
 	
 	# non-blocking
-	my $delay = Mojo::IOLoop::Delay->new(ioloop => $self->_ioloop($nb))->steps(@steps)->catch(sub {
+	my $delay = $self->{delay} = Mojo::IOLoop::Delay->new(ioloop => $self->_ioloop($nb))->steps(@steps)->catch(sub {
 		shift->emit(finish => {error => $_[0]});
 	});
 	$delay->on(finish => sub {
-		$cb->($self, $_[1]);
+		if ($cb) {
+			$cb->($self, $_[1]);
+			$cb = undef;
+			delete $self->{delay};
+		}
 	});
 	
 	# blocking
@@ -345,6 +352,10 @@ sub _has_nl {
 		return ${$_[0]} =~ /\012$/;
 	}
 	$_[0] =~ /\012$/;
+}
+
+sub DESTROY {
+	warn "DESTROY";
 }
 
 1;
