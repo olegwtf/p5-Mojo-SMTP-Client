@@ -48,14 +48,6 @@ has inactivity_timeout => sub { $ENV{MOJO_INACTIVITY_TIMEOUT} // 20 };
 has ioloop             => sub { Mojo::IOLoop->new };
 has autodie            => 0;
 
-my %cmd = (
-	from  => 1,
-	to    => 1,
-	data  => 1,
-	reset => 1,
-	quit  => 1,
-);
-
 sub send {
 	my $self = shift;
 	my $cb = @_ % 2 == 0 ? undef : pop;
