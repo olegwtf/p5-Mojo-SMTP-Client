@@ -66,10 +66,11 @@ sub send {
 	my $nb = $cb ? 1 : 0;
 	
 	$self->{finished} = 0;
+	weaken(my $this = $self);
 	
 	my $resp_checker = sub {
 		my ($delay, $resp) = @_;
-		$self->emit(response => $self->{last_cmd}, $resp);
+		$this->emit(response => $this->{last_cmd}, $resp);
 		
 		die $resp->{error} if $resp->{error};
 		substr($resp->{code}, 0, 1) == $expected_code
@@ -78,42 +79,40 @@ sub send {
 	};
 	
 	# user changed SMTP server or server sent smth while it shouldn't
-	if ($self->{stream} && (($self->{server} ne $self->_server) ||
-	     ($self->{stream}->is_readable && grep {$self->{last_cmd} == $_} (CMD_CONNECT, CMD_DATA_END, CMD_RESET)))
+	if ($this->{stream} && (($this->{server} ne $this->_server) ||
+	     ($this->{stream}->is_readable && grep {$this->{last_cmd} == $_} (CMD_CONNECT, CMD_DATA_END, CMD_RESET)))
 	) {
-		$self->_rm_stream();
+		$this->_rm_stream();
 	}
 	
-	unless ($self->{stream}) {
+	unless ($this->{stream}) {
 		push @steps, sub {
 			my $delay = shift;
 			# connect
-			$self->emit('start');
-			$self->{server} = $self->_server;
-			$self->{last_cmd} = CMD_CONNECT;
+			$this->emit('start');
+			$this->{server} = $this->_server;
+			$this->{last_cmd} = CMD_CONNECT;
 			
 			my $connect_cb = $delay->begin;
-			$self->{client} = Mojo::IOLoop::Client->new(reactor => $self->_ioloop($nb)->reactor);
-			$self->{client}->on(connect => $connect_cb);
-			$self->{client}->on(error => $connect_cb);
-			$self->{client}->connect(
-				address => $self->address,
-				port    => $self->port,
-				timeout => $self->connect_timeout
+			$this->{client} = Mojo::IOLoop::Client->new(reactor => $this->_ioloop($nb)->reactor);
+			$this->{client}->on(connect => $connect_cb);
+			$this->{client}->on(error => $connect_cb);
+			$this->{client}->connect(
+				address => $this->address,
+				port    => $this->port,
+				timeout => $this->connect_timeout
 			);
 		},
 		sub {
 			# read response
 			my $delay = shift;
-			weaken(my $this = $self);
 			delete $this->{client};
 			# check is this a handle
 			Mojo::SMTP::Client::Exception::Stream->throw($_[0]) unless eval { *{$_[0]} };
 			
-			#weaken(my $this = $this);
 			my $error_handler = sub {
 				delete($this->{cleanup_cb})->() if $this->{cleanup_cb};
-				$this->{delay}->steps(); # remove remaining steps
+				$this->{delay}->remaining([]); # remove remaining steps
 				$this->_rm_stream();
 				$this->{delay}->emit(finish => {error => $_[0]});
 			};
@@ -125,10 +124,10 @@ sub send {
 				$error_handler->(Mojo::SMTP::Client::Exception::Stream->new('Inactivity timeout'));
 			});
 			$this->{stream}->on(error => sub {
-				#$error_handler->(Mojo::SMTP::Client::Exception::Stream->new($_[-1]));
+				$error_handler->(Mojo::SMTP::Client::Exception::Stream->new($_[-1]));
 			});
 			$this->{stream}->on(close => sub {
-				#$error_handler->(Mojo::SMTP::Client::Exception::Stream->new('Socket closed unexpectedly by remote side'));
+				$error_handler->(Mojo::SMTP::Client::Exception::Stream->new('Socket closed unexpectedly by remote side'));
 			});
 			$this->_read_response($delay->begin, 0);
 			$expected_code = CMD_OK;
@@ -138,8 +137,8 @@ sub send {
 		# HELO
 		sub {
 			my $delay = shift;
-			$self->_cmd('EHLO ' . $self->hello, CMD_EHLO);
-			$self->_read_response($delay->begin, 0);
+			$this->_cmd('EHLO ' . $this->hello, CMD_EHLO);
+			$this->_read_response($delay->begin, 0);
 			$expected_code = CMD_OK;
 		}, 
 		sub {
@@ -147,8 +146,8 @@ sub send {
 			if (my $err = $@) {
 				die $err unless $err->isa('Mojo::SMTP::Client::Exception::Response');
 				my $delay = shift;
-				$self->_cmd('HELO ' . $self->hello, CMD_HELO);
-				$self->_read_response($delay->begin, 0);
+				$this->_cmd('HELO ' . $this->hello, CMD_HELO);
+				$this->_read_response($delay->begin, 0);
 			}
 		},
 		sub {
@@ -158,7 +157,7 @@ sub send {
 		};
 	}
 	else {
-		$self->{stream}->start;
+		$this->{stream}->start;
 	}
 	
 	for (my $i=0; $i<@cmd; $i+=2) {
@@ -167,8 +166,8 @@ sub send {
 		if ($cmd[$i] eq 'from') { # FROM
 			push @steps, sub {
 				my $delay = shift;
-				$self->_cmd('MAIL FROM:<'.$cmd[$mi].'>', CMD_FROM);
-				$self->_read_response($delay->begin, $mi == $#cmd);
+				$this->_cmd('MAIL FROM:<'.$cmd[$mi].'>', CMD_FROM);
+				$this->_read_response($delay->begin, $mi == $#cmd);
 				$expected_code = CMD_OK;
 			},
 			$resp_checker
@@ -181,8 +180,8 @@ sub send {
 				my $j = ++$cur;
 				push @steps, sub {
 					my $delay = shift;
-					$self->_cmd('RCPT TO:<'.$to.'>', CMD_TO);
-					$self->_read_response($delay->begin, $mi == $#cmd && $j == $count);
+					$this->_cmd('RCPT TO:<'.$to.'>', CMD_TO);
+					$this->_read_response($delay->begin, $mi == $#cmd && $j == $count);
 					$expected_code = CMD_OK;
 				},
 				$resp_checker
@@ -192,8 +191,8 @@ sub send {
 			# DATA
 			push @steps, sub {
 				my $delay = shift;
-				$self->_cmd('DATA', CMD_DATA);
-				$self->_read_response($delay->begin, 0);
+				$this->_cmd('DATA', CMD_DATA);
+				$this->_read_response($delay->begin, 0);
 				$expected_code = CMD_MORE;
 			},
 			$resp_checker;
@@ -206,7 +205,7 @@ sub send {
 					my $delay = shift;
 					unless ($data_writer_cb) {
 						$data_writer_cb = $delay->begin;
-						$self->{cleanup_cb} = sub {
+						$this->{cleanup_cb} = sub {
 							undef $data_writer;
 						};
 					}
@@ -214,14 +213,14 @@ sub send {
 					my $data = $cmd[$mi]->();
 					
 					unless (length(ref $data ? $$data : $data) > 0) {
-						$self->_cmd(($was_nl ? '' : CRLF).'.', CMD_DATA_END);
-						$self->_read_response($data_writer_cb, $mi == $#cmd);
+						$this->_cmd(($was_nl ? '' : CRLF).'.', CMD_DATA_END);
+						$this->_read_response($data_writer_cb, $mi == $#cmd);
 						$expected_code = CMD_OK;
-						return delete($self->{cleanup_cb})->();
+						return delete($this->{cleanup_cb})->();
 					}
 					
 					$was_nl = _has_nl($data);
-					$self->{stream}->write(ref $data ? $$data : $data, $data_writer);
+					$this->{stream}->write(ref $data ? $$data : $data, $data_writer);
 				};
 				
 				push @steps, $data_writer, $resp_checker;
@@ -229,12 +228,12 @@ sub send {
 			else {
 				push @steps, sub {
 					my $delay = shift;
-					$self->{stream}->write(ref $cmd[$mi] ? ${$cmd[$mi]} : $cmd[$mi], $delay->begin);
+					$this->{stream}->write(ref $cmd[$mi] ? ${$cmd[$mi]} : $cmd[$mi], $delay->begin);
 				},
 				sub {
 					my $delay = shift;
-					$self->_cmd((_has_nl($cmd[$mi]) ? '' : CRLF).'.', CMD_DATA_END);
-					$self->_read_response($delay->begin, $mi == $#cmd);
+					$this->_cmd((_has_nl($cmd[$mi]) ? '' : CRLF).'.', CMD_DATA_END);
+					$this->_read_response($delay->begin, $mi == $#cmd);
 					$expected_code = CMD_OK;
 				},
 				$resp_checker
@@ -243,8 +242,8 @@ sub send {
 		elsif ($cmd[$i] eq 'reset') { # RESET
 			push @steps, sub {
 				my $delay = shift;
-				$self->_cmd('RSET', CMD_RESET);
-				$self->_read_response($delay->begin, $mi == $#cmd);
+				$this->_cmd('RSET', CMD_RESET);
+				$this->_read_response($delay->begin, $mi == $#cmd);
 				$expected_code = CMD_OK;
 			},
 			$resp_checker
@@ -252,13 +251,13 @@ sub send {
 		elsif ($cmd[$i] eq 'quit') { # QUIT
 			push @steps, sub {
 				my $delay = shift;
-				$self->_cmd('QUIT', CMD_QUIT);
-				$self->_read_response($delay->begin, $mi == $#cmd);
+				$this->_cmd('QUIT', CMD_QUIT);
+				$this->_read_response($delay->begin, $mi == $#cmd);
 				$expected_code = CMD_OK;
 			},
 			$resp_checker, sub {
 				my $delay = shift;
-				$self->_rm_stream();
+				$this->_rm_stream();
 				$delay->pass(@_);
 			}
 		}
@@ -268,7 +267,7 @@ sub send {
 	}
 	
 	# non-blocking
-	my $delay = $self->{delay} = Mojo::IOLoop::Delay->new(ioloop => $self->_ioloop($nb))->steps(@steps)->catch(sub {
+	my $delay = $this->{delay} = Mojo::IOLoop::Delay->new(ioloop => $this->_ioloop($nb))->steps(@steps)->catch(sub {
 		shift->emit(finish => {error => $_[0]});
 	});
 	$delay->on(finish => sub {
@@ -310,7 +309,8 @@ sub _rm_stream {
 	my $self = shift;
 	$self->{stream}->unsubscribe('close')
 	               ->unsubscribe('timeout')
-	               ->unsubscribe('error');
+	               ->unsubscribe('error')
+	               ->unsubscribe('read');
 	delete $self->{stream};
 }
 
@@ -355,7 +355,10 @@ sub _has_nl {
 }
 
 sub DESTROY {
-	warn "DESTROY";
+	my $self = shift;
+	if ($self->{stream}) {
+		$self->_rm_stream();
+	}
 }
 
 1;
