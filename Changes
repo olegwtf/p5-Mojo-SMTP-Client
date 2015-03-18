@@ -1,5 +1,9 @@
 Revision history for Perl extension Mojo::SMTP::Client
 
+0.04  Wed Mar 18 23:02:32 NOVT 2015
+    - More correct stream errors handling
+    - Fix memory leak which occurred on error
+
 0.03  Wed Mar 11 22:55:12 NOVT 2015
     - new `reset' command for `send'
     - now order of commands for `send' is important
