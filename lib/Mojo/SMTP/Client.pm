@@ -9,7 +9,7 @@ use Mojo::SMTP::Client::Exception;
 use Carp;
 use Scalar::Util 'weaken';
 
-our $VERSION = 0.03;
+our $VERSION = 0.04;
 
 use constant {
 	CMD_OK       => 2,
@@ -47,14 +47,6 @@ has connect_timeout    => sub { $ENV{MOJO_CONNECT_TIMEOUT} || 10 };
 has inactivity_timeout => sub { $ENV{MOJO_INACTIVITY_TIMEOUT} // 20 };
 has ioloop             => sub { Mojo::IOLoop->new };
 has autodie            => 0;
-
-my %cmd = (
-	from  => 1,
-	to    => 1,
-	data  => 1,
-	reset => 1,
-	quit  => 1,
-);
 
 sub send {
 	my $self = shift;
