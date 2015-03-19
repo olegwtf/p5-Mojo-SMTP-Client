@@ -48,8 +48,11 @@ $loop->reactor->io($sock => sub {
 	is($cmd, $cmd[$i++].CRLF, 'right cmd');
 	syswrite($sock, '220 OK'.CRLF);
 });
+
 $loop->reactor->watch($sock, 1, 0);
 $loop->start;
+$loop->reactor->remove($sock);
+
 is($connections, 1, 'right connections count');
 close $sock;
 kill 15, $pid;
@@ -158,8 +161,11 @@ $loop->reactor->io($sock => sub {
 	is($cmd, $cmd[$i+=2], 'right cmd');
 	syswrite($sock, $cmd[$i+1].CRLF);
 });
+
 $loop->reactor->watch($sock, 1, 0);
 $loop->start;
+$loop->reactor->remove($sock);
+
 is($resp_cnt, @cmd_const, 'right response count');
 is($connections, 2, 'right connections count');
 close $sock;
@@ -266,6 +272,8 @@ $loop->reactor->io($sock2 => sub {
 $loop->reactor->watch($sock1, 1, 0);
 $loop->reactor->watch($sock2, 1, 0);
 $loop->start;
+$loop->reactor->remove($sock1);
+$loop->reactor->remove($sock2);
 
 ok($recurring_cnt > 1, 'loop was not blocked');
 close $sock1;
@@ -335,6 +343,8 @@ $smtp->send(
 
 $loop->reactor->watch($sock, 1, 0);
 $loop->start;
+$loop->reactor->remove($sock);
+
 is($connections, 2, 'proper connections count');
 close $sock;
 kill 15, $pid;
