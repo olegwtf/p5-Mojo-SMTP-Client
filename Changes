@@ -1,5 +1,8 @@
 Revision history for Perl extension Mojo::SMTP::Client
 
+0.06  Mon Mar 23 18:28:12 NOVT 2015
+    - $resp now is an object of Mojo::SMTP::Client::Response class
+
 0.05  Thu Mar 19 18:48:20 NOVT 2015
     - Fix tests, so they will pass on OS X
 
