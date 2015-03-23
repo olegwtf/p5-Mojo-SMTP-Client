@@ -24,7 +24,7 @@ Mojo::SMTP::Client::Exception - base class for Mojo::SMTP::Client exceptions
 C<Mojo::SMTP::Client::Exception> is a base class for C<Mojo::SMTP::Client> exceptions.
 It inherits all events, attributes and methods from L<Mojo::Exception>
 
-=head1 NAME
+=head1 Mojo::SMTP::Client::Exception::Stream
 
 Mojo::SMTP::Client::Exception::Stream - stream exceptions for Mojo::SMTP::Client.
 
@@ -33,7 +33,7 @@ Mojo::SMTP::Client::Exception::Stream - stream exceptions for Mojo::SMTP::Client
 C<Mojo::SMTP::Client::Exception::Stream> is a class for stream exceptions inside C<Mojo::SMTP::Client>.
 It inherits all events, attributes and methods from L<Mojo::SMTP::Client::Exception>.
 
-=head1 NAME
+=head1 Mojo::SMTP::Client::Exception::Response
 
 Mojo::SMTP::Client::Exception::Response - response exceptions for Mojo::SMTP::Client.
 
