@@ -66,7 +66,7 @@ Throw exception with stacktrace. First argument should contain response code.
 
 =head1 SEE ALSO
 
-L<Mojo::Exception>
+L<Mojo::SMTP::Client>, L<Mojo::SMTP::Client::Response>, L<Mojo::Exception>
 
 =head1 COPYRIGHT
 

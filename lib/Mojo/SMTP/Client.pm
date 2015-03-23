@@ -276,7 +276,7 @@ sub send {
 			$resp = pop;
 		};
 		$delay->wait;
-		return $self->autodie && $resp->{error} ? die $resp->{error} : $resp;
+		return $self->autodie && $resp->error ? die $resp->error : $resp;
 	}
 }
 
@@ -386,7 +386,7 @@ Mojo::SMTP::Client - non-blocking SMTP client based on Mojo::IOLoop
 		quit => 1,
 		sub {
 			my ($smtp, $resp) = @_;
-			warn $resp->{error} ? 'Failed to send: '.$resp->{error} : 'Sent successfully';
+			warn $resp->error ? 'Failed to send: '.$resp->error : 'Sent successfully';
 			Mojo::IOLoop->stop;
 		}
 	);
@@ -425,7 +425,7 @@ Emitted whenever a new connection is about to start.
 	});
 
 Emitted for each SMTP response from the server. C<$cmd> is a command L<constant|/CONSTANTS> for which this
-response was sent. For C<$resp> description see L</send>.
+response was sent. C<$resp> is L<Mojo::SMTP::Client::Response> object.
 
 =head1 ATTRIBUTES
 
@@ -465,7 +465,7 @@ Event loop object to use for blocking I/O operations, defaults to a L<Mojo::IOLo
 Defines should or not C<Mojo::SMTP::Client> throw exceptions for any type of errors. This only usable for
 blocking usage of C<Mojo::SMTP::Client>, because non-blocking one should never die. Throwed
 exception will be one of the specified in L<Mojo::SMTP::Client::Exception>. When autodie attribute
-has false value you should check C<$respE<gt>{error}> yourself. Default is false.
+has false value you should check C<$respE<gt>error> yourself. Default is false.
 
 =head1 METHODS
 
@@ -525,12 +525,10 @@ the connection until last email will be sent.
 =back
 
 For non-blocking usage last argument to C<send> should be reference to subroutine which will be called when result will
-be available. Subroutine arguments will be C<($smtp, $resp)>. Where C<$resp> is reference to a hash with
-response. This hash may has this keys: C<error>, C<code>, C<messages>. First you should check C<error> - 
-if it has true value this means that it was error somewhere while sending. C<$resp-E<gt>{error}> will be one
-of C<Mojo::SMTP::Client::Exception::*> objects defined in L<Mojo::SMTP::Client::Exception>. If C<error> has
-false value you can get code and messages for last command with C<$resp-E<gt>{code}> (number) and
-C<$resp-E<gt>{messages}> (reference to array with strings).
+be available. Subroutine arguments will be C<($smtp, $resp)>. Where C<$resp> is object of L<Mojo::SMTP::Client::Response> class.
+First you should check C<$resp-E<gt>error> - if it has true value this means that it was error somewhere while sending.
+If C<error> has false value you can get code and messages for response to last command with C<$resp-E<gt>code> (number) and
+C<$resp-E<gt>message> (string).
 
 For blocking usage C<$resp> will be returned as result of C<$smtp-E<gt>send> call. C<$resp> is the same as for
 non-blocking result. If L</autodie> attribute has true value C<send> will throw an exception on any error.
@@ -734,7 +732,7 @@ of necessary SMTP server. We'll get it with help of L<Net::DNS>. Then we'll send
 			my ($smtp, $cmd, $resp) = @_;
 			
 			print ">>", $Mojo::SMTP::Client::CMD{$cmd}, "\n";
-			print "<<", $resp->{code}, " ", join("\n", @{$resp->{messages}}), "\n";
+			print "<<", $resp, "\n";
 		});
 		
 		$smtp->send(
@@ -745,8 +743,8 @@ of necessary SMTP server. We'll get it with help of L<Net::DNS>. Then we'll send
 			sub {
 				my ($smtp, $resp) = @_;
 				
-				warn $resp->{error} ? 'Failed to send: '.$resp->{error} :
-				                      'Sent successfully with code: ', $resp->{code};
+				warn $resp->error ? 'Failed to send: '.$resp->error :
+				                      'Sent successfully with code: ', $resp->code;
 				
 				$loop->stop;
 			}
@@ -761,7 +759,7 @@ on your domain and so on.
 
 =head1 SEE ALSO
 
-L<Mojo::SMTP::Client::Exception>, L<Mojolicious>, L<Mojo::IOLoop>
+L<Mojo::SMTP::Client::Response>, L<Mojo::SMTP::Client::Exception>, L<Mojolicious>, L<Mojo::IOLoop>
 
 =head1 COPYRIGHT
 
