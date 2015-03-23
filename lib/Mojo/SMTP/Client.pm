@@ -134,8 +134,8 @@ sub send {
 		}, 
 		sub {
 			eval { $resp_checker->(@_); $_[1]->{checked} = 1 };
-			if (my $err = $@) {
-				die $err unless $err->error->isa('Mojo::SMTP::Client::Exception::Response');
+			if (my $e = $@) {
+				die $e unless $e->error->isa('Mojo::SMTP::Client::Exception::Response');
 				my $delay = shift;
 				$this->_cmd('HELO ' . $this->hello, CMD_HELO);
 				$this->_read_response($delay->begin, 0);
@@ -527,7 +527,7 @@ the connection until last email will be sent.
 For non-blocking usage last argument to C<send> should be reference to subroutine which will be called when result will
 be available. Subroutine arguments will be C<($smtp, $resp)>. Where C<$resp> is object of L<Mojo::SMTP::Client::Response> class.
 First you should check C<$resp-E<gt>error> - if it has true value this means that it was error somewhere while sending.
-If C<error> has false value you can get code and messages for response to last command with C<$resp-E<gt>code> (number) and
+If C<error> has false value you can get code and message for response to last command with C<$resp-E<gt>code> (number) and
 C<$resp-E<gt>message> (string).
 
 For blocking usage C<$resp> will be returned as result of C<$smtp-E<gt>send> call. C<$resp> is the same as for
