@@ -5,6 +5,7 @@ use Mojo::IOLoop;
 use Mojo::IOLoop::Client;
 use Mojo::IOLoop::Delay;
 use Mojo::IOLoop::Stream;
+use Mojo::SMTP::Client::Response;
 use Mojo::SMTP::Client::Exception;
 use Carp;
 use Scalar::Util 'weaken';
@@ -24,8 +25,6 @@ use constant {
 	CMD_DATA_END => 7,
 	CMD_RESET    => 8,
 	CMD_QUIT     => 9,
-	
-	CRLF         => "\x0d\x0a",
 };
 
 our %CMD = (
@@ -64,9 +63,9 @@ sub send {
 		my ($delay, $resp) = @_;
 		$this->emit(response => $this->{last_cmd}, $resp);
 		
-		die $resp->{error} if $resp->{error};
-		substr($resp->{code}, 0, 1) == $expected_code
-			or Mojo::SMTP::Client::Exception::Response->throw($resp->{code}, $resp->{code}.' '.join("\n", @{$resp->{messages}}));
+		unless (substr($resp->code, 0, 1) == $expected_code) {
+			die $resp->error(Mojo::SMTP::Client::Exception::Response->new($resp->message)->code($resp->code));
+		}
 		$delay->pass($resp);
 	};
 	
@@ -106,7 +105,7 @@ sub send {
 				delete($this->{cleanup_cb})->() if $this->{cleanup_cb};
 				$this->{delay}->remaining([]); # remove remaining steps
 				$this->_rm_stream();
-				$this->{delay}->emit(finish => {error => $_[0]});
+				$this->{delay}->emit(finish => Mojo::SMTP::Client::Response->new('')->error($_[0]));
 			};
 			
 			$this->{stream} = Mojo::IOLoop::Stream->new($_[0]);
@@ -136,7 +135,7 @@ sub send {
 		sub {
 			eval { $resp_checker->(@_); $_[1]->{checked} = 1 };
 			if (my $err = $@) {
-				die $err unless $err->isa('Mojo::SMTP::Client::Exception::Response');
+				die $err unless $err->error->isa('Mojo::SMTP::Client::Exception::Response');
 				my $delay = shift;
 				$this->_cmd('HELO ' . $this->hello, CMD_HELO);
 				$this->_read_response($delay->begin, 0);
@@ -205,7 +204,7 @@ sub send {
 					my $data = $cmd[$mi]->();
 					
 					unless (length(ref $data ? $$data : $data) > 0) {
-						$this->_cmd(($was_nl ? '' : CRLF).'.', CMD_DATA_END);
+						$this->_cmd(($was_nl ? '' : Mojo::SMTP::Client::Response::CRLF).'.', CMD_DATA_END);
 						$this->_read_response($data_writer_cb, $mi == $#cmd);
 						$expected_code = CMD_OK;
 						return delete($this->{cleanup_cb})->();
@@ -224,7 +223,7 @@ sub send {
 				},
 				sub {
 					my $delay = shift;
-					$this->_cmd((_has_nl($cmd[$mi]) ? '' : CRLF).'.', CMD_DATA_END);
+					$this->_cmd((_has_nl($cmd[$mi]) ? '' : Mojo::SMTP::Client::Response::CRLF).'.', CMD_DATA_END);
 					$this->_read_response($delay->begin, $mi == $#cmd);
 					$expected_code = CMD_OK;
 				},
@@ -260,7 +259,7 @@ sub send {
 	
 	# non-blocking
 	my $delay = $this->{delay} = Mojo::IOLoop::Delay->new(ioloop => $this->_ioloop($nb))->steps(@steps)->catch(sub {
-		shift->emit(finish => {error => $_[0]});
+		shift->emit(finish => $_[0]);
 	});
 	$delay->on(finish => sub {
 		if ($cb) {
@@ -294,7 +293,7 @@ sub _server {
 sub _cmd {
 	my ($self, $cmd, $cmd_const) = @_;
 	$self->{last_cmd} = $cmd_const;
-	$self->{stream}->write($cmd.CRLF);
+	$self->{stream}->write($cmd.Mojo::SMTP::Client::Response::CRLF);
 }
 
 sub _rm_stream {
@@ -319,24 +318,9 @@ sub _read_response {
 				$self->{stream}->timeout(0);
 				$self->{stream}->stop;
 			}
-			$cb->($self, _parse_response($resp));
+			$cb->($self, Mojo::SMTP::Client::Response->new($resp));
 		}
 	});
-}
-
-sub _parse_response {
-	my ($code, @msg);
-	
-	my @lines = split CRLF, $_[0];
-	($code) = $lines[0] =~ /^(\d+)/;
-	
-	for (@lines) {
-		if (/^\d+[-\s](.+)/) {
-			push @msg, $1;
-		}
-	}
-	
-	return {code => $code, messages => \@msg};
 }
 
 sub _has_nl {

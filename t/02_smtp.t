@@ -14,10 +14,11 @@ my $smtp = Mojo::SMTP::Client->new(address => $host, port => $port);
 syswrite($sock, join(CRLF, '220 host.net', '220 hello ok', '220 from ok', '220 to ok', '220 quit ok').CRLF);
 
 my $resp = $smtp->send(from => '', to => 'jorik@gmail.com', quit => 1);
-ok(!$resp->{error}, 'no error') or diag $resp->{error};
-is($resp->{code}, 220, 'right response code');
-is(@{$resp->{messages}}, 1, 'one message in response');
-is($resp->{messages}[0], 'quit ok', 'right message');
+isa_ok($resp, 'Mojo::SMTP::Client::Response');
+ok(!$resp->error, 'no error') or diag $resp->error;
+is($resp->code, 220, 'right response code');
+is($resp->message, 'quit ok', 'right message');
+is($resp->to_string, '220 quit ok'.CRLF, 'stringify message');
 
 my @expected_cmd = (
 	'CONNECT',
