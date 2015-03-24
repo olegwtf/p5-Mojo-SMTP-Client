@@ -9,7 +9,6 @@ use Mojo::SMTP::Client::Response;
 use Mojo::SMTP::Client::Exception;
 use IO::Socket::SSL;
 use Scalar::Util 'weaken';
-use POSIX ();
 use Carp;
 
 our $VERSION = 0.06;
@@ -108,25 +107,7 @@ sub send {
 			# check is this a handle
 			Mojo::SMTP::Client::Exception::Stream->throw($_[0]) unless eval { *{$_[0]} };
 			
-			my $error_handler = sub {
-				delete($this->{cleanup_cb})->() if $this->{cleanup_cb};
-				$this->{delay}->remaining([]); # remove remaining steps
-				$this->_rm_stream();
-				$this->{delay}->emit(finish => $_[0]);
-			};
-			
-			$this->{stream} = Mojo::IOLoop::Stream->new($_[0]);
-			$this->{stream}->reactor($this->_ioloop($nb)->reactor);
-			$this->{stream}->start;
-			$this->{stream}->on(timeout => sub {
-				$error_handler->(Mojo::SMTP::Client::Exception::Stream->new('Inactivity timeout'));
-			});
-			$this->{stream}->on(error => sub {
-				$error_handler->(Mojo::SMTP::Client::Exception::Stream->new($_[-1]));
-			});
-			$this->{stream}->on(close => sub {
-				$error_handler->(Mojo::SMTP::Client::Exception::Stream->new('Socket closed unexpectedly by remote side'));
-			});
+			$this->_make_stream($_[0], $this->_ioloop($nb));
 			$this->_read_response($delay->begin, 0);
 			$expected_code = CMD_OK;
 		},
@@ -182,17 +163,12 @@ sub send {
 					$tls_cb->($delay, 0, @_>=2 ? $_[1] : 'Inactivity timeout');
 				};
 				
-				# make copy, because stream also uses reactor to watch this handle
-				my $fd = POSIX::dup(fileno $this->{stream}->handle)
-					or return $delay->pass(0, "dup: $!");
-				open $sock, '+<&='.$fd
-					or return $delay->pass(0, "open: $!");
-				IO::Socket::SSL->start_SSL(
-					$sock,
+				$sock = IO::Socket::SSL->start_SSL(
+					$self->{stream}->steal_handle,
 					SSL_startHandshake => 0,
 					SSL_error_trap     => $error_handler
 				)
-					or return $delay->pass(0, $SSL_ERROR);
+				or return $delay->pass(0, $SSL_ERROR);
 				
 				$tls_cb = $delay->begin;
 				$loop = $this->_ioloop($nb);
@@ -203,8 +179,9 @@ sub send {
 					if ($sock->connect_SSL) {
 						$loop->remove($tid);
 						$loop->reactor->remove($sock);
-						$this->{stream}->start;
+						$this->_make_stream($sock, $loop);
 						$this->{starttls} = 1;
+						$sock = undef;
 						return $tls_cb->($delay, 1);
 					}
 					
@@ -369,6 +346,31 @@ sub _cmd {
 	$self->{stream}->write($cmd.Mojo::SMTP::Client::Response::CRLF);
 }
 
+sub _make_stream {
+	my ($self, $sock, $loop) = @_;
+	
+	weaken $self;
+	my $error_handler = sub {
+		delete($self->{cleanup_cb})->() if $self->{cleanup_cb};
+		$self->{delay}->remaining([]); # remove remaining steps
+		$self->_rm_stream();
+		$self->{delay}->emit(finish => $_[0]);
+	};
+	
+	$self->{stream} = Mojo::IOLoop::Stream->new($sock);
+	$self->{stream}->reactor($loop->reactor);
+	$self->{stream}->start;
+	$self->{stream}->on(timeout => sub {
+		$error_handler->(Mojo::SMTP::Client::Exception::Stream->new('Inactivity timeout'));
+	});
+	$self->{stream}->on(error => sub {
+		$error_handler->(Mojo::SMTP::Client::Exception::Stream->new($_[-1]));
+	});
+	$self->{stream}->on(close => sub {
+		$error_handler->(Mojo::SMTP::Client::Exception::Stream->new('Socket closed unexpectedly by remote side'));
+	});
+}
+
 sub _rm_stream {
 	my $self = shift;
 	$self->{stream}->unsubscribe('close')
@@ -408,7 +410,6 @@ sub DESTROY {
 	if ($self->{stream}) {
 		$self->_rm_stream();
 	}
-	warn "DESTROY";
 }
 
 1;
