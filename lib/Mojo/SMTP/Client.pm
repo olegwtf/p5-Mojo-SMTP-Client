@@ -40,7 +40,8 @@ our %CMD = (
 );
 
 has address            => 'localhost';
-has port               => 25;
+has port               => sub { $_[0]->tls ? 465 : 25 };
+has tls                => 0;
 has hello              => 'localhost.localdomain';
 has connect_timeout    => sub { $ENV{MOJO_CONNECT_TIMEOUT} || 10 };
 has inactivity_timeout => sub { $ENV{MOJO_INACTIVITY_TIMEOUT} // 20 };
@@ -91,7 +92,8 @@ sub send {
 			$this->{client}->connect(
 				address => $this->address,
 				port    => $this->port,
-				timeout => $this->connect_timeout
+				timeout => $this->connect_timeout,
+				tls     => $this->tls,
 			);
 		},
 		sub {
@@ -287,7 +289,7 @@ sub _ioloop {
 
 sub _server {
 	my $self = shift;
-	return $self->address.':'.$self->port;
+	return $self->address.':'.$self->port.':'.$self->tls;
 }
 
 sub _cmd {
@@ -438,7 +440,11 @@ Address of SMTP server (ip or domain name). Default is C<localhost>
 
 =head2 port
 
-Port of SMTP server. Default is C<25>
+Port of SMTP server. Default is C<25> for plain connection and C<465> if TLS is enabled.
+
+=head2 tls
+
+Enable TLS. Should be true if SMTP server expects encrypted connection. Default is false.
 
 =head2 hello
 
