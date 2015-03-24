@@ -7,8 +7,10 @@ use Mojo::IOLoop::Delay;
 use Mojo::IOLoop::Stream;
 use Mojo::SMTP::Client::Response;
 use Mojo::SMTP::Client::Exception;
-use Carp;
+use IO::Socket::SSL;
 use Scalar::Util 'weaken';
+use POSIX ();
+use Carp;
 
 our $VERSION = 0.06;
 
@@ -17,6 +19,7 @@ use constant {
 	CMD_MORE     => 3,
 	
 	CMD_CONNECT  => 1,
+	CMD_STARTTLS => 10,
 	CMD_EHLO     => 2,
 	CMD_HELO     => 3,
 	CMD_FROM     => 4,
@@ -29,6 +32,7 @@ use constant {
 
 our %CMD = (
 	&CMD_CONNECT  => 'CMD_CONNECT',
+	&CMD_STARTTLS => 'CMD_STARTTLS',
 	&CMD_EHLO     => 'CMD_EHLO',
 	&CMD_HELO     => 'CMD_HELO',
 	&CMD_FROM     => 'CMD_FROM',
@@ -72,7 +76,7 @@ sub send {
 	
 	# user changed SMTP server or server sent smth while it shouldn't
 	if ($this->{stream} && (($this->{server} ne $this->_server) ||
-	     ($this->{stream}->is_readable && grep {$this->{last_cmd} == $_} (CMD_CONNECT, CMD_DATA_END, CMD_RESET)))
+	     ($this->{stream}->is_readable && !$this->{starttls} && grep {$this->{last_cmd} == $_} (CMD_CONNECT, CMD_DATA_END, CMD_RESET)))
 	) {
 		$this->_rm_stream();
 	}
@@ -81,6 +85,7 @@ sub send {
 		push @steps, sub {
 			my $delay = shift;
 			# connect
+			$this->{starttls} = 0;
 			$this->emit('start');
 			$this->{server} = $this->_server;
 			$this->{last_cmd} = CMD_CONNECT;
@@ -107,7 +112,7 @@ sub send {
 				delete($this->{cleanup_cb})->() if $this->{cleanup_cb};
 				$this->{delay}->remaining([]); # remove remaining steps
 				$this->_rm_stream();
-				$this->{delay}->emit(finish => Mojo::SMTP::Client::Response->new('')->error($_[0]));
+				$this->{delay}->emit(finish => $_[0]);
 			};
 			
 			$this->{stream} = Mojo::IOLoop::Stream->new($_[0]);
@@ -156,7 +161,69 @@ sub send {
 	for (my $i=0; $i<@cmd; $i+=2) {
 		my $mi = $i+1;
 		
-		if ($cmd[$i] eq 'from') { # FROM
+		if ($cmd[$i] eq 'starttls') { # STARTTLS
+			push @steps, sub {
+				my $delay = shift;
+				$this->_cmd('STARTTLS', CMD_STARTTLS);
+				$this->_read_response($delay->begin, $mi == $#cmd);
+				$expected_code = CMD_OK;
+			},
+			$resp_checker,
+			sub {
+				my $delay = shift;
+				$this->{stream}->stop;
+				$this->{stream}->timeout(0);
+				
+				my ($tls_cb, $tid, $loop, $sock);
+				my $error_handler = sub {
+					$loop->remove($tid);
+					$loop->reactor->remove($sock);
+					$sock = undef;
+					$tls_cb->($delay, 0, @_>=2 ? $_[1] : 'Inactivity timeout');
+				};
+				
+				# make copy, because stream also uses reactor to watch this handle
+				my $fd = POSIX::dup(fileno $this->{stream}->handle)
+					or return $delay->pass(0, "dup: $!");
+				open $sock, '+<&='.$fd
+					or return $delay->pass(0, "open: $!");
+				IO::Socket::SSL->start_SSL(
+					$sock,
+					SSL_startHandshake => 0,
+					SSL_error_trap     => $error_handler
+				)
+					or return $delay->pass(0, $SSL_ERROR);
+				
+				$tls_cb = $delay->begin;
+				$loop = $this->_ioloop($nb);
+				
+				$tid = $loop->timer($this->inactivity_timeout => $error_handler);
+				
+				$loop->reactor->io($sock => sub {
+					if ($sock->connect_SSL) {
+						$loop->remove($tid);
+						$loop->reactor->remove($sock);
+						$this->{stream}->start;
+						$this->{starttls} = 1;
+						return $tls_cb->($delay, 1);
+					}
+					
+					return $loop->reactor->watch($sock, 1, 0) if $SSL_ERROR == SSL_WANT_READ;
+					return $loop->reactor->watch($sock, 0, 1) if $SSL_ERROR == SSL_WANT_WRITE;
+					
+				})->watch($sock, 0, 1);
+			},
+			sub {
+				my ($delay, $success, $error) = @_;
+				unless ($success) {
+					$this->_rm_stream();
+					Mojo::SMTP::Client::Exception::Stream->throw($error);
+				}
+				
+				$delay->pass;
+			}
+		}
+		elsif ($cmd[$i] eq 'from') { # FROM
 			push @steps, sub {
 				my $delay = shift;
 				$this->_cmd('MAIL FROM:<'.$cmd[$mi].'>', CMD_FROM);
@@ -181,7 +248,6 @@ sub send {
 			}
 		}
 		elsif ($cmd[$i] eq 'data') { # DATA
-			# DATA
 			push @steps, sub {
 				my $delay = shift;
 				$this->_cmd('DATA', CMD_DATA);
@@ -265,7 +331,12 @@ sub send {
 	});
 	$delay->on(finish => sub {
 		if ($cb) {
-			$cb->($self, $_[1]);
+			my $r = $_[1];
+			if ($r->isa('Mojo::SMTP::Client::Exception')) {
+				$r = Mojo::SMTP::Client::Response->new('', error => $r);
+			}
+			
+			$cb->($self, $r);
 			$cb = undef;
 			delete $self->{delay};
 		}
@@ -337,6 +408,7 @@ sub DESTROY {
 	if ($self->{stream}) {
 		$self->_rm_stream();
 	}
+	warn "DESTROY";
 }
 
 1;
@@ -492,6 +564,12 @@ and C<value> is a value for this command. C<send> understands the following comm
 
 =over
 
+=item starttls
+
+Upgrades connection from plain to encrypted. Some servers requires this before sending any other commands
+
+	$smtp->send(starttls => 1);
+
 =item from
 
 From which email this message was sent. Value for this cammand should be a string with email
@@ -565,6 +643,7 @@ clients to make simultaneous sending.
 C<Mojo::SMTP::Client> has this non-importable constants
 
 	CMD_CONNECT  # client connected to SMTP server
+	CMD_STARTTLS # client sent STARTTLS command
 	CMD_EHLO     # client sent EHLO command
 	CMD_HELO     # client sent HELO command
 	CMD_FROM     # client sent MAIL FROM command
