@@ -44,6 +44,9 @@ our %CMD = (
 has address            => 'localhost';
 has port               => sub { $_[0]->tls ? 465 : 25 };
 has tls                => 0;
+has 'tls_ca';
+has 'tls_cert';
+has 'tls_key';
 has hello              => 'localhost.localdomain';
 has connect_timeout    => sub { $ENV{MOJO_CONNECT_TIMEOUT} || 10 };
 has inactivity_timeout => sub { $ENV{MOJO_INACTIVITY_TIMEOUT} // 20 };
@@ -93,10 +96,13 @@ sub send {
 			$this->{client}->on(connect => $connect_cb);
 			$this->{client}->on(error => $connect_cb);
 			$this->{client}->connect(
-				address => $this->address,
-				port    => $this->port,
-				timeout => $this->connect_timeout,
-				tls     => $this->tls,
+				address  => $this->address,
+				port     => $this->port,
+				timeout  => $this->connect_timeout,
+				tls      => $this->tls,
+				tls_ca   => $this->tls_ca,
+				tls_cert => $this->tls_cert,
+				tls_key  => $this->tls_key
 			);
 		},
 		sub {
@@ -166,8 +172,14 @@ sub send {
 				
 				$sock = IO::Socket::SSL->start_SSL(
 					$self->{stream}->steal_handle,
-					SSL_startHandshake => 0,
-					SSL_error_trap     => $error_handler
+					SSL_ca_file         => $this->tls_ca,
+					SSL_cert_file       => $this->tls_cert,
+					SSL_key_file        => $this->tls_key,
+					SSL_verify_mode     => $this->tls_ca ? 0x01 : 0x00,
+					SSL_verifycn_name   => $this->address,
+					SSL_verifycn_scheme => $this->tls_ca ? 'smtp' : undef,
+					SSL_startHandshake  => 0,
+					SSL_error_trap      => $error_handler
 				)
 				or return $delay->pass(0, $IO::Socket::SSL::SSL_ERROR);
 				
@@ -524,6 +536,18 @@ Enable TLS. Should be true if SMTP server expects encrypted connection. Default 
 Proper version of L<IO::Socket::SSL> should be installed for TLS support in L<Mojo::IOLoop::Client>,
 which you can find with C<mojo version> command.
 
+=head2 tls_ca
+
+Path to TLS certificate authority file. Also activates hostname verification.
+
+=head2 tls_cert
+
+Path to the TLS certificate file.
+
+=head2 tls_key
+
+Path to the TLS key file.
+
 =head2 hello
 
 SMTP requires that you identify yourself. This option specifies a string to pass as your mail domain.
@@ -573,8 +597,10 @@ and C<value> is a value for this command. C<send> understands the following comm
 =item starttls
 
 Upgrades connection from plain to encrypted. Some servers requires this before sending any other commands.
-L<IO::Socket::SSL> 0.98+ should be installed for this to work
+L<IO::Socket::SSL> 0.98+ should be installed for this to work. See also L</tls_ca>, L</tls_cert>, L</tls_key>
+attributes
 
+	$smtp->tls_ca('/etc/ssl/certs/ca-certificates.crt');
 	$smtp->send(starttls => 1);
 
 =item from

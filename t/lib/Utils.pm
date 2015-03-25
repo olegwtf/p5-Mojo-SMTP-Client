@@ -5,9 +5,22 @@ use IO::Socket 'CRLF';
 use Socket;
 
 use constant DEBUG => $ENV{MOJO_SMTP_TEST_DEBUG};
+use constant TLS => eval "use IO::Socket::SSL 0.98; 1";
 
 sub make_smtp_server {
-	my $srv = IO::Socket::INET->new(Listen => 10)
+	my $tls = shift;
+	
+	my @opts = (Listen => 10);
+	my $class;
+	if ($tls) {
+		$class = 'IO::Socket::SSL';
+		push @opts, SSL_cert_file => 't/cert/server-cert.pem',
+		            SSL_key_file  => 't/cert/server-key.pem';
+	}
+	else {
+		$class = 'IO::Socket::INET';
+	}
+	my $srv = $class->new(@opts)
 		or die $@;
 	
 	socketpair(my $sock1, my $sock2, AF_UNIX, SOCK_STREAM, PF_UNSPEC)
@@ -22,16 +35,24 @@ sub make_smtp_server {
 			syswrite($sock2, 'CONNECT'.CRLF);
 			
 			while (my $resp = <$sock2>) {
-				syswrite($clt, $resp) && DEBUG && warn "<- $resp" if $resp =~ /^\d+/;
+				syswrite($clt, $resp) && DEBUG && warn "[$clt] <- $resp" if $resp =~ /^\d+/;
 				next if $resp =~ /^\d+-/;
 				if ($resp =~ /!quit\s*$/) {
-					warn "!quit\n" if DEBUG;
+					warn "[$clt] !quit\n" if DEBUG;
 					$clt->close();
 					last;
 				}
+				elsif ($resp =~ /!starttls\s*$/) {
+					warn "[$clt] !starttls\n" if DEBUG;
+					IO::Socket::SSL->start_SSL($clt,
+						SSL_server      => 1,
+						SSL_cert_file   => 't/cert/server-cert.pem',
+						SSL_key_file    => 't/cert/server-key.pem'
+					) or die $SSL_ERROR;
+				}
 				
 				my $cmd = <$clt> or last;
-				warn "-> $cmd" if DEBUG;
+				warn "[$clt] -> $cmd" if DEBUG;
 				syswrite($sock2, $cmd);
 			}
 		}

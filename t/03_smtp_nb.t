@@ -178,13 +178,14 @@ $smtp1->send(
 	from  => 'root1@2gis.ru',
 	to    => 'jora1@2gis.ru',
 	reset => 1,
+	Utils::TLS ? (starttls => 1) : (),
 	from  => 'foo@2gis.com',
 	to    => 'bar@2gis.kz',
 	data  => '123',
 	quit  => 1,
 	sub {
 		my $resp = pop;
-		ok(!$resp->error, 'no error for client 1');
+		ok(!$resp->error, 'no error for client 1') or diag $resp->error;
 		is($resp->code, 220, 'right code for client 1');
 		is($resp->message, 'OK', 'right message for client 1');
 		$loop->stop unless --$clients;
@@ -197,6 +198,7 @@ my @cmd1 = (
 	'MAIL FROM:<root1@2gis.ru>',
 	'RCPT TO:<jora1@2gis.ru>',
 	'RSET',
+	Utils::TLS ? ('STARTTLS') : (),
 	'MAIL FROM:<foo@2gis.com>',
 	'RCPT TO:<bar@2gis.kz>',
 	'DATA',
@@ -243,7 +245,7 @@ $loop->reactor->io($sock1 => sub {
 	$cmd =~ s/\s+$//;
 	
 	is($cmd, $cmd1[$i1++], 'right cmd for client 1');
-	syswrite($sock1, ($cmd eq 'DATA' ? '320 OK' : ($cmd eq '123' ? '.' : '220 OK')).CRLF);
+	syswrite($sock1, ($cmd eq 'DATA' ? '320 OK' : ($cmd eq '123' ? '.' : ($cmd eq 'STARTTLS' ? '220 OK!starttls' : '220 OK'))).CRLF);
 });
 
 my $i2 = 0;

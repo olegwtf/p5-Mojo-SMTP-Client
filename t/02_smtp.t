@@ -9,8 +9,9 @@ if ($^O eq 'MSWin32') {
 	plan skip_all => 'fork() support required';
 }
 
-my ($pid, $sock, $host, $port) = Utils::make_smtp_server();
-my $smtp = Mojo::SMTP::Client->new(address => $host, port => $port);
+# 1
+my ($pid, $sock, $host, $port) = Utils::make_smtp_server(Mojo::IOLoop::Client::TLS);
+my $smtp = Mojo::SMTP::Client->new(address => $host, port => $port, tls => Mojo::IOLoop::Client::TLS);
 syswrite($sock, join(CRLF, '220 host.net', '220 hello ok', '220 from ok', '220 to ok', '220 quit ok').CRLF);
 
 my $resp = $smtp->send(from => '', to => 'jorik@gmail.com', quit => 1);
@@ -34,6 +35,7 @@ for (0..4) {
 close $sock;
 kill 15, $pid;
 
+# 2
 ($pid, $sock, $host, $port) = Utils::make_smtp_server();
 $smtp = Mojo::SMTP::Client->new(address => $host, port => $port, inactivity_timeout => 0.5, autodie => 1);
 eval {
@@ -44,6 +46,7 @@ isa_ok($e, 'Mojo::SMTP::Client::Exception::Stream');
 close $sock;
 kill 15, $pid;
 
+# 3
 ($pid, $sock, $host, $port) = Utils::make_smtp_server();
 $smtp = Mojo::SMTP::Client->new(address => $host, port => $port, autodie => 1);
 syswrite($sock, '500 host.net is busy'.CRLF);
