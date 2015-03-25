@@ -877,7 +877,9 @@ on your domain and so on.
 
 =head1 SEE ALSO
 
-L<Mojo::SMTP::Client::Response>, L<Mojo::SMTP::Client::Exception>, L<Mojolicious>, L<Mojo::IOLoop>
+L<Mojo::SMTP::Client::Response>, L<Mojo::SMTP::Client::Exception>, L<Mojolicious>, L<Mojo::IOLoop>,
+L<RFC5321 (SMTP)|https://tools.ietf.org/html/rfc5321>, L<RFC3207 (STARTTLS)|https://tools.ietf.org/html/rfc3207>,
+L<RFC4616 (AUTH PLAIN)|https://tools.ietf.org/html/rfc4616>
 
 =head1 COPYRIGHT
 
