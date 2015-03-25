@@ -7,7 +7,6 @@ use Mojo::IOLoop::Delay;
 use Mojo::IOLoop::Stream;
 use Mojo::SMTP::Client::Response;
 use Mojo::SMTP::Client::Exception;
-use IO::Socket::SSL;
 use Scalar::Util 'weaken';
 use Carp;
 
@@ -143,6 +142,8 @@ sub send {
 		my $mi = $i+1;
 		
 		if ($cmd[$i] eq 'starttls') { # STARTTLS
+			require IO::Socket::SSL and IO::Socket::SSL->VERSION(0.98);
+			
 			push @steps, sub {
 				my $delay = shift;
 				$this->_cmd('STARTTLS', CMD_STARTTLS);
@@ -168,7 +169,7 @@ sub send {
 					SSL_startHandshake => 0,
 					SSL_error_trap     => $error_handler
 				)
-				or return $delay->pass(0, $SSL_ERROR);
+				or return $delay->pass(0, $IO::Socket::SSL::SSL_ERROR);
 				
 				$tls_cb = $delay->begin;
 				$loop = $this->_ioloop($nb);
@@ -185,8 +186,10 @@ sub send {
 						return $tls_cb->($delay, 1);
 					}
 					
-					return $loop->reactor->watch($sock, 1, 0) if $SSL_ERROR == SSL_WANT_READ;
-					return $loop->reactor->watch($sock, 0, 1) if $SSL_ERROR == SSL_WANT_WRITE;
+					return $loop->reactor->watch($sock, 1, 0)
+						if $IO::Socket::SSL::SSL_ERROR == IO::Socket::SSL::SSL_WANT_READ;
+					return $loop->reactor->watch($sock, 0, 1)
+						if $IO::Socket::SSL::SSL_ERROR == IO::Socket::SSL::SSL_WANT_WRITE;
 					
 				})->watch($sock, 0, 1);
 			},
@@ -518,6 +521,8 @@ Port of SMTP server. Default is C<25> for plain connection and C<465> if TLS is 
 =head2 tls
 
 Enable TLS. Should be true if SMTP server expects encrypted connection. Default is false.
+Proper version of L<IO::Socket::SSL> should be installed for TLS support in L<Mojo::IOLoop::Client>,
+which you can find with C<mojo version> command.
 
 =head2 hello
 
@@ -567,7 +572,8 @@ and C<value> is a value for this command. C<send> understands the following comm
 
 =item starttls
 
-Upgrades connection from plain to encrypted. Some servers requires this before sending any other commands
+Upgrades connection from plain to encrypted. Some servers requires this before sending any other commands.
+L<IO::Socket::SSL> 0.98+ should be installed for this to work
 
 	$smtp->send(starttls => 1);
 

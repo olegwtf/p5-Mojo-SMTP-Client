@@ -6,7 +6,7 @@ WriteMakefile(
 	NAME              => 'Mojo::SMTP::Client',
 	LICENSE           => 'perl',
 	VERSION_FROM      => 'lib/Mojo/SMTP/Client.pm', # finds $VERSION
-	PREREQ_PM         => { 'Mojolicious' => 5, 'IO::Socket::SSL' => 0.98 },
+	PREREQ_PM         => { 'Mojolicious' => 5 },
 	BUILD_REQUIRES    => { 'Test::More' => 0.88 },
 	CONFIGURE_REQUIRES => {
 		'ExtUtils::MakeMaker' => 6.52,
