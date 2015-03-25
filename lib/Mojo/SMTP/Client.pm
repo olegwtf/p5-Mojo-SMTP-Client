@@ -10,7 +10,7 @@ use Mojo::SMTP::Client::Exception;
 use Scalar::Util 'weaken';
 use Carp;
 
-our $VERSION = 0.06;
+our $VERSION = 0.07;
 
 use constant {
 	CMD_OK       => 2,
