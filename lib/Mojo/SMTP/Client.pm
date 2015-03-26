@@ -427,9 +427,9 @@ sub _read_response {
 
 sub _has_nl {
 	if (ref $_[0]) {
-		return ${$_[0]} =~ /\012$/;
+		return ${$_[0]} =~ /\015\012$/;
 	}
-	$_[0] =~ /\012$/;
+	$_[0] =~ /\015\012$/;
 }
 
 sub DESTROY {
@@ -743,13 +743,13 @@ available on CPAN. L<MIME::Lite> for example. With such modules we can get
 email as a string and send it with C<Mojo::SMTP::Client>
 
 	use MIME::Lite;
-	use Encode;
+	use Encode qw(encode decode);
 	
 	my $msg = MIME::Lite->new(
 		Type    => 'text',
 		From    => 'me@home.org',
 		To      => 'you@work.org',
-		Subject => Encode::encode('MIME-Header', '世界, 労働, 5月!'),
+		Subject => encode('MIME-Header', decode('utf-8', '世界, 労働, 5月!')),
 		Data    => 'Novosibirsk (Russian: Новосибирск; IPA: [nəvəsʲɪˈbʲirsk]) is the third most populous '.
 		           'city in Russia after Moscow and St. Petersburg and the most populous city in Asian Russia'
 	);
