@@ -80,7 +80,8 @@ sub send {
 	
 	# user changed SMTP server or server sent smth while it shouldn't
 	if ($this->{stream} && (($this->{server} ne $this->_server) ||
-	     ($this->{stream}->is_readable && !$this->{starttls} && grep {$this->{last_cmd} == $_} (CMD_CONNECT, CMD_DATA_END, CMD_RESET)))
+	     ($this->{stream}->is_readable && !$this->{starttls} && !$this->{authorized} && 
+	      grep {$this->{last_cmd} == $_} (CMD_CONNECT, CMD_DATA_END, CMD_RESET)))
 	) {
 		$this->_rm_stream();
 	}
@@ -89,7 +90,7 @@ sub send {
 		push @steps, sub {
 			my $delay = shift;
 			# connect
-			$this->{starttls} = 0;
+			$this->{starttls} = $this->{authorized} = 0;
 			$this->emit('start');
 			$this->{server} = $this->_server;
 			$this->{last_cmd} = CMD_CONNECT;
@@ -225,7 +226,12 @@ sub send {
 				$this->_read_response($delay->begin, $mi == $#cmd);
 				$expected_code = CMD_OK;
 			},
-			$resp_checker
+			$resp_checker,
+			sub {
+				my $delay = shift;
+				$this->{authorized} = 1;
+				$delay->pass;
+			}
 		}
 		elsif ($cmd[$i] eq 'from') { # FROM
 			push @steps, sub {
@@ -615,6 +621,13 @@ attributes
 	$smtp->tls_ca('/etc/ssl/certs/ca-certificates.crt');
 	$smtp->send(starttls => 1);
 
+=item auth
+
+Authorize on SMTP server. Argument to this command should be reference to a hash with C<login> and C<password>
+keys. Only PLAIN authorization supported for now.
+
+	$smtp->send(auth => {login => 'oleg', password => 'qwerty'});
+
 =item from
 
 From which email this message was sent. Value for this cammand should be a string with email
@@ -688,9 +701,10 @@ clients to make simultaneous sending.
 C<Mojo::SMTP::Client> has this non-importable constants
 
 	CMD_CONNECT  # client connected to SMTP server
-	CMD_STARTTLS # client sent STARTTLS command
 	CMD_EHLO     # client sent EHLO command
 	CMD_HELO     # client sent HELO command
+	CMD_STARTTLS # client sent STARTTLS command
+	CMD_AUTH     # client sent AUTH command
 	CMD_FROM     # client sent MAIL FROM command
 	CMD_TO       # client sent RCPT TO command
 	CMD_DATA     # client sent DATA command
