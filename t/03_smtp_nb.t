@@ -77,6 +77,7 @@ $smtp->send(
 		is($resp->message, 'Connection closed'.CRLF.'See you again', 'right message');
 		
 		$smtp->send(
+			auth => {login => 'jora', password => 'test'},
 			from => 'jora@foo.net',
 			to   => 'root@2gis.com',
 			data => sub {
@@ -111,6 +112,7 @@ $i = -2;
 	'QUIT' => '224-Connection closed'.CRLF.'224 See you again',
 	'CONNECT' => '220 CONNECT OK',
 	'EHLO dragon-host.net' => '203 HELLO!!!!',
+	'AUTH PLAIN AGpvcmEAdGVzdA==' => '230 AUTHORIZED',
 	'MAIL FROM:<jora@foo.net>' => '222 sender ok',
 	'RCPT TO:<root@2gis.com>' => '223 rcpt ok',
 	'DATA' => '331 send data, please',
@@ -130,6 +132,7 @@ my @cmd_const = (
 	Mojo::SMTP::Client::CMD_QUIT,
 	Mojo::SMTP::Client::CMD_CONNECT,
 	Mojo::SMTP::Client::CMD_EHLO,
+	Mojo::SMTP::Client::CMD_AUTH,
 	Mojo::SMTP::Client::CMD_FROM,
 	Mojo::SMTP::Client::CMD_TO,
 	Mojo::SMTP::Client::CMD_DATA,

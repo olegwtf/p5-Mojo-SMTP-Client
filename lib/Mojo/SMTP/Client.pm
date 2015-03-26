@@ -221,7 +221,7 @@ sub send {
 		elsif ($cmd[$i] eq 'auth') { # AUTH
 			push @steps, sub {
 				my $delay = shift;
-				$this->_cmd('AUTH PLAIN '.b64_encode(join("\0", '', $cmd[$mi]->{login}, $cmd[$mi]->{password}), ''));
+				$this->_cmd('AUTH PLAIN '.b64_encode(join("\0", '', $cmd[$mi]->{login}, $cmd[$mi]->{password}), ''), CMD_AUTH);
 				$this->_read_response($delay->begin, $mi == $#cmd);
 				$expected_code = CMD_OK;
 			},
