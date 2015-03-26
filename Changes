@@ -1,5 +1,11 @@
 Revision history for Perl extension Mojo::SMTP::Client
 
+0.08  Thu Mar 26 18:31:20 NOVT 2015
+    - Fix tests for cases when IO::Socket::SSL not available
+    - Fix bug when last chars of data could be LF without CR
+    - Add new `auth' command for `send'
+    - Add new recipe about sending emails via public SMTP servers with auth
+
 0.07  Wed Mar 25 16:28:18 NOVT 2015
     - new `tls', `tls_ca', `tls_cert', `tls_key' attributes
     - new `starttls' command for `send'
