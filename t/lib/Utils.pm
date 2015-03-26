@@ -5,7 +5,7 @@ use IO::Socket 'CRLF';
 use Socket;
 
 use constant DEBUG => $ENV{MOJO_SMTP_TEST_DEBUG};
-use constant TLS => eval "use IO::Socket::SSL 0.98; 1";
+use constant TLS => scalar eval "use IO::Socket::SSL 0.98; 1";
 
 sub make_smtp_server {
 	my $tls = shift;
@@ -48,7 +48,7 @@ sub make_smtp_server {
 						SSL_server      => 1,
 						SSL_cert_file   => 't/cert/server-cert.pem',
 						SSL_key_file    => 't/cert/server-key.pem'
-					) or die $SSL_ERROR;
+					) or die $IO::Socket::SSL::SSL_ERROR;
 				}
 				
 				my $cmd = <$clt> or last;

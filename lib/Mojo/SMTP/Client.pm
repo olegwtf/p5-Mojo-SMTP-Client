@@ -199,9 +199,9 @@ sub send {
 					}
 					
 					return $loop->reactor->watch($sock, 1, 0)
-						if $IO::Socket::SSL::SSL_ERROR == IO::Socket::SSL::SSL_WANT_READ;
+						if $IO::Socket::SSL::SSL_ERROR == IO::Socket::SSL::SSL_WANT_READ();
 					return $loop->reactor->watch($sock, 0, 1)
-						if $IO::Socket::SSL::SSL_ERROR == IO::Socket::SSL::SSL_WANT_WRITE;
+						if $IO::Socket::SSL::SSL_ERROR == IO::Socket::SSL::SSL_WANT_WRITE();
 					
 				})->watch($sock, 0, 1);
 			},
