@@ -65,7 +65,6 @@ sub send {
 	my $expected_code;
 	my $nb = $cb ? 1 : 0;
 	
-	$self->{finished} = 0;
 	weaken(my $this = $self);
 	
 	my $resp_checker = sub {
