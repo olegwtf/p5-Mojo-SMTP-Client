@@ -5,6 +5,7 @@ use Mojo::IOLoop;
 use Mojo::IOLoop::Client;
 use Mojo::IOLoop::Delay;
 use Mojo::IOLoop::Stream;
+use Mojo::Util 'b64_encode';
 use Mojo::SMTP::Client::Response;
 use Mojo::SMTP::Client::Exception;
 use Scalar::Util 'weaken';
@@ -17,9 +18,10 @@ use constant {
 	CMD_MORE     => 3,
 	
 	CMD_CONNECT  => 1,
-	CMD_STARTTLS => 10,
 	CMD_EHLO     => 2,
 	CMD_HELO     => 3,
+	CMD_STARTTLS => 10,
+	CMD_AUTH     => 11,
 	CMD_FROM     => 4,
 	CMD_TO       => 5,
 	CMD_DATA     => 6,
@@ -30,9 +32,10 @@ use constant {
 
 our %CMD = (
 	&CMD_CONNECT  => 'CMD_CONNECT',
-	&CMD_STARTTLS => 'CMD_STARTTLS',
 	&CMD_EHLO     => 'CMD_EHLO',
 	&CMD_HELO     => 'CMD_HELO',
+	&CMD_STARTTLS => 'CMD_STARTTLS',
+	&CMD_AUTH     => 'CMD_AUTH',
 	&CMD_FROM     => 'CMD_FROM',
 	&CMD_TO       => 'CMD_TO',
 	&CMD_DATA     => 'CMD_DATA',
@@ -214,6 +217,15 @@ sub send {
 				
 				$delay->pass;
 			}
+		}
+		elsif ($cmd[$i] eq 'auth') { # AUTH
+			push @steps, sub {
+				my $delay = shift;
+				$this->_cmd('AUTH PLAIN '.b64_encode(join("\0", '', $cmd[$mi]->{login}, $cmd[$mi]->{password}), ''));
+				$this->_read_response($delay->begin, $mi == $#cmd);
+				$expected_code = CMD_OK;
+			},
+			$resp_checker
 		}
 		elsif ($cmd[$i] eq 'from') { # FROM
 			push @steps, sub {
