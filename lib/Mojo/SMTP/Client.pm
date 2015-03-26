@@ -624,7 +624,7 @@ attributes
 =item auth
 
 Authorize on SMTP server. Argument to this command should be reference to a hash with C<login> and C<password>
-keys. Only PLAIN authorization supported for now.
+keys. Only PLAIN authorization supported for now. You should authorize only once per session
 
 	$smtp->send(auth => {login => 'oleg', password => 'qwerty'});
 
@@ -819,6 +819,35 @@ as argument, so it will be super easy to send our big email in memory-efficient 
 		from => 'me@home.org',
 		to   => 'you@work.org',
 		data => sub { $generator->get() }
+	);
+
+=head2 How to send message using public email services like Gmail
+
+Most such services provides access via SMTP in addition to web interface, but needs authorization. To protect your
+login and password most of them requires to start encrypted session (by upgrading plain connection with C<starttls>
+or by initial C<tls> connection). For example Gmail supports both this ways:
+
+	# make plain connection to port 25
+	my $smtp = Mojo::SMTP::Client->new(address => 'smtp.gmail.com');
+	# and upgrade it to TLS with starttls
+	$smtp->send(
+		starttls => 1,
+		auth => {login => $login, password => $password},
+		from => $from,
+		to   => $to,
+		data => $msg,
+		quit => 1
+	);
+	
+	# or make initial TLS connection to port 465
+	my $smtp = Mojo::SMTP::Client->new(address => 'smtp.gmail.com', tls => 1);
+	# no need to use starttls
+	$smtp->send(
+		auth => {login => $login, password => $password},
+		from => $from,
+		to   => $to,
+		data => $msg,
+		quit => 1
 	);
 
 =head2 How to send message directly, without using of MTAs such as sendmail, postfix, exim, ...
