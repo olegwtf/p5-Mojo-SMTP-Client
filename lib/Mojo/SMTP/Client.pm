@@ -757,6 +757,29 @@ B<Note>. Connection to SMTP server will be made on first C<send> or for each C<s
 same C<Mojo::SMTP::Client>, because each client has one global stream per client. So, you need to create several
 clients to make simultaneous sending.
 
+=head2 prepend_cmd
+
+	$smtp->prepend_cmd(reset => 1, starttls => 1);
+
+Prepend specified commands to the queue, so the next command sent to the server will be the first you specified in C<prepend_cmd>.
+You can prepend commands only when sending already in progress and there are commands in the queue. So, the most common place to call
+C<prepend_cmd> is inside C<response> event handler. For example this is how we can say "start SSL session if server supports it":
+
+	$smtp->on(response => sub {
+		my ($smtp, $cmd, $resp) = @_;
+		if ($cmd == Mojo::SMTP::Client::CMD_EHLO && $resp->message =~ /STARTTLS/i) {
+			$smtp->prepend_cmd(starttls => 1);
+		}
+	});
+	$smtp->send(
+		from => $from,
+		to   => $to,
+		data => $data,
+		quit => 1
+	);
+
+C<prepend_cmd> accepts same commands as L</send>.
+
 =head1 CONSTANTS
 
 C<Mojo::SMTP::Client> has this non-importable constants
