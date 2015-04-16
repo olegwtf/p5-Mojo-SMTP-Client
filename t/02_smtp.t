@@ -14,7 +14,7 @@ my ($pid, $sock, $host, $port) = Utils::make_smtp_server(Mojo::IOLoop::Client::T
 my $smtp = Mojo::SMTP::Client->new(address => $host, port => $port, tls => Mojo::IOLoop::Client::TLS||0);
 syswrite($sock, join(CRLF, '220 host.net', '220 hello ok', '220 from ok', '220 to ok', '220 quit ok').CRLF);
 
-my $resp = $smtp->send(from => '', to => 'jorik@gmail.com', quit => 1);
+my $resp = $smtp->send(hello => 'mymail.host', from => '', to => 'jorik@gmail.com', quit => 1);
 isa_ok($resp, 'Mojo::SMTP::Client::Response');
 ok(!$resp->error, 'no error') or diag $resp->error;
 is($resp->code, 220, 'right response code');
@@ -23,7 +23,7 @@ is($resp->to_string, '220 quit ok'.CRLF, 'stringify message');
 
 my @expected_cmd = (
 	'CONNECT',
-	'EHLO localhost.localdomain',
+	'EHLO mymail.host',
 	'MAIL FROM:<>',
 	'RCPT TO:<jorik@gmail.com>',
 	'QUIT'

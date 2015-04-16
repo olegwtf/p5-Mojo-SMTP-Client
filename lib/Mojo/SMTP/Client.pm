@@ -634,6 +634,15 @@ and C<value> is a value for this command. C<send> understands the following comm
 
 =over
 
+=item hello
+
+Send greeting to the server. Argument to this command should contain your domain name. Keep in mind, that
+C<Mojo::SMTP::Client> will automatically send greeting to the server right after connection if you not specified
+C<hello> as first command for C<send>. C<Mojo::SMTP::Client> first tries C<EHLO> command for greeting and if
+server doesn't accept it C<Mojo::SMTP::Client> retries with C<HELO> command.
+
+	$smtp->send(hello => 'mymail.me');
+
 =item starttls
 
 Upgrades connection from plain to encrypted. Some servers requires this before sending any other commands.
