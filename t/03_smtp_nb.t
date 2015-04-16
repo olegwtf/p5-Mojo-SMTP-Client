@@ -363,7 +363,7 @@ $smtp = Mojo::SMTP::Client->new(address => $host, port => $port);
 	'RCPT TO:<xyz@mail.ru>' => "210 recorder",
 	'DATA' => "321 Please continue",
 	'fooo' => '.',
-	'.' => '234 Oh yes',
+	'.' => '234 Oh yes'
 );
 $i = 0;
 $loop->reactor->io($sock => sub {
