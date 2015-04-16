@@ -175,12 +175,6 @@ sub _server {
 	return $self->address.':'.$self->port.':'.$self->tls;
 }
 
-sub _cmd {
-	my ($self, $cmd, $cmd_const) = @_;
-	$self->{last_cmd} = $cmd_const;
-	$self->{stream}->write($cmd.Mojo::SMTP::Client::Response::CRLF);
-}
-
 sub _make_stream {
 	my ($self, $sock, $loop) = @_;
 	
@@ -218,8 +212,8 @@ sub _make_cmd_steps {
 		if ($cmd[$i] eq 'hello') { # EHLO/HELO
 			push @steps, sub {
 				my $delay = shift;
-				$self->_cmd('EHLO ' . $self->hello, CMD_EHLO);
-				$self->_read_response($delay->begin, 0);
+				$self->_write_cmd('EHLO ' . $cmd[$mi], CMD_EHLO);
+				$self->_read_response($delay->begin, $mi == $#cmd);
 				$self->{expected_code} = CMD_OK;
 			}, 
 			sub {
@@ -227,8 +221,10 @@ sub _make_cmd_steps {
 				if (my $e = $@) {
 					die $e unless $e->error->isa('Mojo::SMTP::Client::Exception::Response');
 					my $delay = shift;
-					$self->_cmd('HELO ' . $self->hello, CMD_HELO);
-					$self->_read_response($delay->begin, 0);
+					
+					$self->{stream}->start if $mi == $#cmd; # XXX: _read_response may stop stream
+					$self->_write_cmd('HELO ' . $cmd[$mi], CMD_HELO);
+					$self->_read_response($delay->begin, $mi == $#cmd);
 				}
 			},
 			sub {
@@ -242,7 +238,7 @@ sub _make_cmd_steps {
 			
 			push @steps, sub {
 				my $delay = shift;
-				$self->_cmd('STARTTLS', CMD_STARTTLS);
+				$self->_write_cmd('STARTTLS', CMD_STARTTLS);
 				$self->_read_response($delay->begin, $mi == $#cmd);
 				$self->{expected_code} = CMD_OK;
 			},
@@ -308,7 +304,7 @@ sub _make_cmd_steps {
 		elsif ($cmd[$i] eq 'auth') { # AUTH
 			push @steps, sub {
 				my $delay = shift;
-				$self->_cmd('AUTH PLAIN '.b64_encode(join("\0", '', $cmd[$mi]->{login}, $cmd[$mi]->{password}), ''), CMD_AUTH);
+				$self->_write_cmd('AUTH PLAIN '.b64_encode(join("\0", '', $cmd[$mi]->{login}, $cmd[$mi]->{password}), ''), CMD_AUTH);
 				$self->_read_response($delay->begin, $mi == $#cmd);
 				$self->{expected_code} = CMD_OK;
 			},
@@ -322,7 +318,7 @@ sub _make_cmd_steps {
 		elsif ($cmd[$i] eq 'from') { # FROM
 			push @steps, sub {
 				my $delay = shift;
-				$self->_cmd('MAIL FROM:<'.$cmd[$mi].'>', CMD_FROM);
+				$self->_write_cmd('MAIL FROM:<'.$cmd[$mi].'>', CMD_FROM);
 				$self->_read_response($delay->begin, $mi == $#cmd);
 				$self->{expected_code} = CMD_OK;
 			},
@@ -336,7 +332,7 @@ sub _make_cmd_steps {
 				my $j = ++$cur;
 				push @steps, sub {
 					my $delay = shift;
-					$self->_cmd('RCPT TO:<'.$to.'>', CMD_TO);
+					$self->_write_cmd('RCPT TO:<'.$to.'>', CMD_TO);
 					$self->_read_response($delay->begin, $mi == $#cmd && $j == $count);
 					$self->{expected_code} = CMD_OK;
 				},
@@ -346,7 +342,7 @@ sub _make_cmd_steps {
 		elsif ($cmd[$i] eq 'data') { # DATA
 			push @steps, sub {
 				my $delay = shift;
-				$self->_cmd('DATA', CMD_DATA);
+				$self->_write_cmd('DATA', CMD_DATA);
 				$self->_read_response($delay->begin, 0);
 				$self->{expected_code} = CMD_MORE;
 			},
@@ -368,7 +364,7 @@ sub _make_cmd_steps {
 					my $data = $cmd[$mi]->();
 					
 					unless (length(ref $data ? $$data : $data) > 0) {
-						$self->_cmd(($was_nl ? '' : Mojo::SMTP::Client::Response::CRLF).'.', CMD_DATA_END);
+						$self->_write_cmd(($was_nl ? '' : Mojo::SMTP::Client::Response::CRLF).'.', CMD_DATA_END);
 						$self->_read_response($data_writer_cb, $mi == $#cmd);
 						$self->{expected_code} = CMD_OK;
 						return delete($self->{cleanup_cb})->();
@@ -387,7 +383,7 @@ sub _make_cmd_steps {
 				},
 				sub {
 					my $delay = shift;
-					$self->_cmd((_has_nl($cmd[$mi]) ? '' : Mojo::SMTP::Client::Response::CRLF).'.', CMD_DATA_END);
+					$self->_write_cmd((_has_nl($cmd[$mi]) ? '' : Mojo::SMTP::Client::Response::CRLF).'.', CMD_DATA_END);
 					$self->_read_response($delay->begin, $mi == $#cmd);
 					$self->{expected_code} = CMD_OK;
 				},
@@ -397,7 +393,7 @@ sub _make_cmd_steps {
 		elsif ($cmd[$i] eq 'reset') { # RESET
 			push @steps, sub {
 				my $delay = shift;
-				$self->_cmd('RSET', CMD_RESET);
+				$self->_write_cmd('RSET', CMD_RESET);
 				$self->_read_response($delay->begin, $mi == $#cmd);
 				$self->{expected_code} = CMD_OK;
 			},
@@ -406,7 +402,7 @@ sub _make_cmd_steps {
 		elsif ($cmd[$i] eq 'quit') { # QUIT
 			push @steps, sub {
 				my $delay = shift;
-				$self->_cmd('QUIT', CMD_QUIT);
+				$self->_write_cmd('QUIT', CMD_QUIT);
 				$self->_read_response($delay->begin, $mi == $#cmd);
 				$self->{expected_code} = CMD_OK;
 			},
@@ -424,13 +420,10 @@ sub _make_cmd_steps {
 	return @steps;
 }
 
-sub _rm_stream {
-	my $self = shift;
-	$self->{stream}->unsubscribe('close')
-	               ->unsubscribe('timeout')
-	               ->unsubscribe('error')
-	               ->unsubscribe('read');
-	delete $self->{stream};
+sub _write_cmd {
+	my ($self, $cmd, $cmd_const) = @_;
+	$self->{last_cmd} = $cmd_const;
+	$self->{stream}->write($cmd.Mojo::SMTP::Client::Response::CRLF);
 }
 
 sub _read_response {
@@ -449,6 +442,15 @@ sub _read_response {
 			$cb->($self, Mojo::SMTP::Client::Response->new($resp));
 		}
 	});
+}
+
+sub _rm_stream {
+	my $self = shift;
+	$self->{stream}->unsubscribe('close')
+	               ->unsubscribe('timeout')
+	               ->unsubscribe('error')
+	               ->unsubscribe('read');
+	delete $self->{stream};
 }
 
 sub _has_nl {
