@@ -350,6 +350,58 @@ is($connections, 2, 'proper connections count');
 close $sock;
 kill 15, $pid;
 
+# 5
+($pid, $sock, $host, $port) = Utils::make_smtp_server();
+$smtp = Mojo::SMTP::Client->new(address => $host, port => $port);
+
+@cmd = (
+	'CONNECT' => '220 CONNECTED',
+	'EHLO localhost.localdomain' => "203-HELLO SHT\r\n203 ".(Utils::TLS ? "STARTTLS" : "NOTHING"),
+	Utils::TLS ? ('STARTTLS' => '205 SECURE!starttls') : (),
+	'MAIL FROM:<abc@mail.ru>' => "210 recorder",
+	'RCPT TO:<def@mail.ru>' => "210 recorder",
+	'RCPT TO:<xyz@mail.ru>' => "210 recorder",
+	'DATA' => "321 Please continue",
+	'fooo' => '.',
+	'.' => '234 Oh yes',
+);
+$i = 0;
+$loop->reactor->io($sock => sub {
+	my $cmd = <$sock>;
+	return unless $cmd; # socket closed
+	$cmd =~ s/\s+$//;
+	
+	is($cmd, $cmd[$i], 'right cmd for client');
+	syswrite($sock, $cmd[$i+1].CRLF);
+	$i+=2;
+});
+$smtp->send(
+	from => 'abc@mail.ru',
+	to   => ['def@mail.ru'],
+	to   => 'xyz@mail.ru',
+	data => 'fooo',
+	sub {
+		my $resp = pop;
+		ok(!$resp->error, 'no error') or diag $resp->error;
+		is($resp->message, 'Oh yes', 'right message');
+		$loop->stop;
+	}
+);
+$smtp->on(response => sub {
+	my ($smtp, $cmd, $resp) = @_;
+	
+	if ($cmd == Mojo::SMTP::Client::CMD_EHLO && $resp->message =~ /STARTTLS/i) {
+		$smtp->prepend_cmd(starttls => 1);
+	}
+});
+
+$loop->reactor->watch($sock, 1, 0);
+$loop->start;
+$loop->reactor->remove($sock);
+
+close $sock;
+kill 15, $pid;
+
 done_testing;
 
 __DATA__

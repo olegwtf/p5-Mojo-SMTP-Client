@@ -82,6 +82,8 @@ sub send {
 	my @steps;
 	$self->{nb} = $cb ? 1 : 0;
 	
+	delete $self->{new_cmd};
+	
 	# user changed SMTP server or server sent smth while it shouldn't
 	if ($self->{stream} && (($self->{server} ne $self->_server) ||
 	     ($self->{stream}->is_readable && !$self->{starttls} && !$self->{authorized} && 
@@ -165,6 +167,23 @@ sub send {
 	}
 }
 
+sub prepend_cmd {
+	my $self = shift;
+	croak "no active `send' calls" unless exists $self->{delay};
+	
+	my $remaining = $self->{delay}->remaining;
+	my $i;
+	
+	for ($i=0; $i<@$remaining; $i++) {
+		if (exists $self->{new_cmd}{$remaining->[$i]}) {
+			last;
+		}
+	}
+	
+	croak "no commands in the queue, can't prepend to nothing" if $i == @$remaining;
+	splice @$remaining, $i, 0, $self->_make_cmd_steps(@_);
+}
+
 sub _ioloop {
 	my ($self) = @_;
 	return $self->{nb} ? Mojo::IOLoop->singleton : $self->ioloop;
@@ -210,12 +229,12 @@ sub _make_cmd_steps {
 		my $mi = $i+1;
 		
 		if ($cmd[$i] eq 'hello') { # EHLO/HELO
-			push @steps, sub {
+			push @steps, $self->_new_cmd(sub {
 				my $delay = shift;
 				$self->_write_cmd('EHLO ' . $cmd[$mi], CMD_EHLO);
 				$self->_read_response($delay->begin, $mi == $#cmd);
 				$self->{expected_code} = CMD_OK;
-			}, 
+			}), 
 			sub {
 				eval { $self->{resp_checker}->(@_); $_[1]->{checked} = 1 };
 				if (my $e = $@) {
@@ -236,12 +255,12 @@ sub _make_cmd_steps {
 		elsif ($cmd[$i] eq 'starttls') { # STARTTLS
 			require IO::Socket::SSL and IO::Socket::SSL->VERSION(0.98);
 			
-			push @steps, sub {
+			push @steps, $self->_new_cmd(sub {
 				my $delay = shift;
 				$self->_write_cmd('STARTTLS', CMD_STARTTLS);
 				$self->_read_response($delay->begin, $mi == $#cmd);
 				$self->{expected_code} = CMD_OK;
-			},
+			}),
 			$self->{resp_checker},
 			sub {
 				my $delay = shift;
@@ -302,12 +321,12 @@ sub _make_cmd_steps {
 			}
 		}
 		elsif ($cmd[$i] eq 'auth') { # AUTH
-			push @steps, sub {
+			push @steps, $self->_new_cmd(sub {
 				my $delay = shift;
 				$self->_write_cmd('AUTH PLAIN '.b64_encode(join("\0", '', $cmd[$mi]->{login}, $cmd[$mi]->{password}), ''), CMD_AUTH);
 				$self->_read_response($delay->begin, $mi == $#cmd);
 				$self->{expected_code} = CMD_OK;
-			},
+			}),
 			$self->{resp_checker},
 			sub {
 				my $delay = shift;
@@ -316,12 +335,12 @@ sub _make_cmd_steps {
 			}
 		}
 		elsif ($cmd[$i] eq 'from') { # FROM
-			push @steps, sub {
+			push @steps, $self->_new_cmd(sub {
 				my $delay = shift;
 				$self->_write_cmd('MAIL FROM:<'.$cmd[$mi].'>', CMD_FROM);
 				$self->_read_response($delay->begin, $mi == $#cmd);
 				$self->{expected_code} = CMD_OK;
-			},
+			}),
 			$self->{resp_checker}
 		}
 		elsif ($cmd[$i] eq 'to') { # TO
@@ -330,22 +349,22 @@ sub _make_cmd_steps {
 			
 			for my $to (ref $cmd[$mi] ? @{$cmd[$mi]} : $cmd[$mi]) {
 				my $j = ++$cur;
-				push @steps, sub {
+				push @steps, $self->_new_cmd(sub {
 					my $delay = shift;
 					$self->_write_cmd('RCPT TO:<'.$to.'>', CMD_TO);
 					$self->_read_response($delay->begin, $mi == $#cmd && $j == $count);
 					$self->{expected_code} = CMD_OK;
-				},
+				}),
 				$self->{resp_checker}
 			}
 		}
 		elsif ($cmd[$i] eq 'data') { # DATA
-			push @steps, sub {
+			push @steps, $self->_new_cmd(sub {
 				my $delay = shift;
 				$self->_write_cmd('DATA', CMD_DATA);
 				$self->_read_response($delay->begin, 0);
 				$self->{expected_code} = CMD_MORE;
-			},
+			}),
 			$self->{resp_checker};
 			
 			if (ref $cmd[$mi] eq 'CODE') {
@@ -391,21 +410,21 @@ sub _make_cmd_steps {
 			}
 		}
 		elsif ($cmd[$i] eq 'reset') { # RESET
-			push @steps, sub {
+			push @steps, $self->_new_cmd(sub {
 				my $delay = shift;
 				$self->_write_cmd('RSET', CMD_RESET);
 				$self->_read_response($delay->begin, $mi == $#cmd);
 				$self->{expected_code} = CMD_OK;
-			},
+			}),
 			$self->{resp_checker}
 		}
 		elsif ($cmd[$i] eq 'quit') { # QUIT
-			push @steps, sub {
+			push @steps, $self->_new_cmd(sub {
 				my $delay = shift;
 				$self->_write_cmd('QUIT', CMD_QUIT);
 				$self->_read_response($delay->begin, $mi == $#cmd);
 				$self->{expected_code} = CMD_OK;
-			},
+			}),
 			$self->{resp_checker}, sub {
 				my $delay = shift;
 				$self->_rm_stream();
@@ -418,6 +437,13 @@ sub _make_cmd_steps {
 	}
 	
 	return @steps;
+}
+
+sub _new_cmd {
+	my ($self, $sub) = @_;
+	
+	$self->{new_cmd}{$sub} = 1;
+	$sub;
 }
 
 sub _write_cmd {
@@ -461,6 +487,7 @@ sub _has_nl {
 }
 
 sub DESTROY {
+	warn "DDD";
 	my $self = shift;
 	if ($self->{stream}) {
 		$self->_rm_stream();
