@@ -1,5 +1,9 @@
 Revision history for Perl extension Mojo::SMTP::Client
 
+0.10  Wed Apr 22 13:06:04 NOVT 2015
+    - Clean ripped childs inside tests to prevent tests failing on BINGOS's
+      openBSDs
+
 0.09  Thu Apr 16 23:56:39 NOVT 2015
     - Fix possible memory leak for `starttls' command
     - Support for explicit `hello' command
