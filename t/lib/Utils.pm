@@ -3,9 +3,15 @@ package Utils;
 use strict;
 use IO::Socket 'CRLF';
 use Socket;
+use POSIX 'WNOHANG';
 
 use constant DEBUG => $ENV{MOJO_SMTP_TEST_DEBUG};
 use constant TLS => scalar eval "use IO::Socket::SSL 0.98; 1";
+
+$SIG{CHLD} = sub {
+	my $pid;
+	do { $pid = waitpid(-1, WNOHANG) } while $pid > 0;
+};
 
 sub make_smtp_server {
 	my $tls = shift;
