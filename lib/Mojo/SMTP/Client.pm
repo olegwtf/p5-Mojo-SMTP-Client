@@ -370,6 +370,7 @@ sub _make_cmd_steps {
 				$self->{expected_code} = CMD_MORE;
 			}),
 			$self->{resp_checker};
+			
 			if (ref $cmd[$mi] eq 'CODE') {
 				my ($data_writer, $data_writer_cb);
 				my $was_nl;
