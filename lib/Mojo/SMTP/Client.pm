@@ -370,7 +370,6 @@ sub _make_cmd_steps {
 				$self->{expected_code} = CMD_MORE;
 			}),
 			$self->{resp_checker};
-			
 			if (ref $cmd[$mi] eq 'CODE') {
 				my ($data_writer, $data_writer_cb);
 				my $was_nl;
@@ -393,7 +392,7 @@ sub _make_cmd_steps {
 						$self->{expected_code} = CMD_OK;
 						return delete($self->{cleanup_cb})->();
 					}
-					$data_buffer =~ s/\012(\.?)/\012$1$1/sg; # turn . into .. if it's first character of the line
+					$data_buffer =~ s/\015?\012(\.?)/\015\012$1$1/sg; # turn . into .. if it's first character of the line
 					$was_nl = _has_nl($data_buffer);
 					$self->{stream}->write($data_buffer, $data_writer);
 				};
@@ -405,7 +404,7 @@ sub _make_cmd_steps {
 				push @steps, sub {
 					my $delay = shift;
 					$data_buffer = ref $cmd[$mi] ? ${$cmd[$mi]} : $cmd[$mi];
-					$data_buffer =~ s/\012(\.?)/\012$1$1/sg; # turn . into .. if it's first character of the line
+					$data_buffer =~ s/\015?\012(\.?)/\015\012$1$1/sg; # turn . into .. if it's first character of the line
 					$self->{stream}->write($data_buffer, $delay->begin);
 				},
 				sub {

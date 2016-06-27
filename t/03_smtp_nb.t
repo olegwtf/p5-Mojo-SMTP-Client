@@ -117,7 +117,6 @@ $i = -2;
 	'RCPT TO:<root@2gis.com>' => '223 rcpt ok',
 	'DATA' => '331 send data, please',
 	(map { s/\s+$//; $_ => '.' } <DATA>),
-	''  => '.',
 	'.' => '224 Message sent',
 	'QUIT' => '200 See you'
 );
