@@ -385,28 +385,32 @@ sub _make_cmd_steps {
 					}
 					
 					my $data = $cmd[$mi]->();
+					my $data_buffer = ref $data ? $$data : $data;
 					
-					unless (length(ref $data ? $$data : $data) > 0) {
+					unless (length($data_buffer) > 0) {
 						$self->_write_cmd(($was_nl ? '' : Mojo::SMTP::Client::Response::CRLF).'.', CMD_DATA_END);
 						$self->_read_response($data_writer_cb, !$prepend && $mi == $#cmd);
 						$self->{expected_code} = CMD_OK;
 						return delete($self->{cleanup_cb})->();
 					}
-					
-					$was_nl = _has_nl($data);
-					$self->{stream}->write(ref $data ? $$data : $data, $data_writer);
+					$data_buffer =~ s/\012(\.?)/\012$1$1/sg; # turn . into .. if it's first character of the line
+					$was_nl = _has_nl($data_buffer);
+					$self->{stream}->write($data_buffer, $data_writer);
 				};
 				
 				push @steps, $data_writer, $self->{resp_checker};
 			}
 			else {
+				my $data_buffer;
 				push @steps, sub {
 					my $delay = shift;
-					$self->{stream}->write(ref $cmd[$mi] ? ${$cmd[$mi]} : $cmd[$mi], $delay->begin);
+					$data_buffer = ref $cmd[$mi] ? ${$cmd[$mi]} : $cmd[$mi];
+					$data_buffer =~ s/\012(\.?)/\012$1$1/sg; # turn . into .. if it's first character of the line
+					$self->{stream}->write($data_buffer, $delay->begin);
 				},
 				sub {
 					my $delay = shift;
-					$self->_write_cmd((_has_nl($cmd[$mi]) ? '' : Mojo::SMTP::Client::Response::CRLF).'.', CMD_DATA_END);
+					$self->_write_cmd((_has_nl($data_buffer) ? '' : Mojo::SMTP::Client::Response::CRLF).'.', CMD_DATA_END);
 					$self->_read_response($delay->begin, !$prepend && $mi == $#cmd);
 					$self->{expected_code} = CMD_OK;
 				},
