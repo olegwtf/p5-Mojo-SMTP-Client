@@ -373,6 +373,7 @@ sub _make_cmd_steps {
 			if (ref $cmd[$mi] eq 'CODE') {
 				my ($data_writer, $data_writer_cb);
 				my $was_nl;
+				my $last_ch;
 				
 				$data_writer = sub {
 					my $delay = shift;
@@ -392,7 +393,23 @@ sub _make_cmd_steps {
 						$self->{expected_code} = CMD_OK;
 						return delete($self->{cleanup_cb})->();
 					}
-					$data_buffer =~ s/\015?\012(\.?)/\015\012$1$1/sg; # turn . into .. if it's first character of the line
+					# The following part if heavily inspired by Net::Cmd
+					my $first_ch = '';
+					# We have not send anything yet, so last_ch = "\012" means we are at the start of a line
+					$last_ch = "\012" unless defined $last_ch;
+					if ($last_ch eq "\015") {
+						# Remove \012 so it does not get prefixed with another \015 below
+						# and escape the . if there is one following it because the fixup
+						# below will not find it
+						$first_ch = "\012" if $data_buffer =~ s/^\012(\.?)/$1$1/;
+					}
+					elsif ($last_ch eq "\012") {
+						# Fixup below will not find the . as the first character of the buffer
+						$first_ch = "." if $data_buffer =~ /^\./;
+					}
+					$data_buffer =~ s/\015?\012(\.?)/\015\012$1$1/sg;
+					substr($data_buffer, 0, 0) = $first_ch;
+					$last_ch = substr($data_buffer, -1, 1);
 					$was_nl = _has_nl($data_buffer);
 					$self->{stream}->write($data_buffer, $data_writer);
 				};
