@@ -1,3 +1,4 @@
+use 5.010;
 use strict;
 use Test::More;
 use Mojo::IOLoop;
@@ -394,6 +395,63 @@ $smtp->on(response => sub {
 	}
 });
 
+$loop->reactor->watch($sock, 1, 0);
+$loop->start;
+$loop->reactor->remove($sock);
+
+close $sock;
+kill 15, $pid;
+
+# 6
+($pid, $sock, $host, $port) = Utils::make_smtp_server();
+$smtp = Mojo::SMTP::Client->new(address => $host, port => $port);
+
+sub get_data {
+	my $len = shift // 2;
+	my $data = "LINE1\r\n"
+		 . "\r\n"
+		 . ".\r\n"
+		 . "..\r\n"
+		 . "...\n"     #intentionally only \n
+		 . "....\r\n"
+		 . ".LLL7\n"   #intentionally only \n
+		 . "LLLLL8\n"; #intentionally only \n
+	state $pos = 0;
+	return '' if $pos >= length($data);
+	my $rv = substr($data, $pos, $len);
+	$pos += $len;
+	return $rv;
+};
+$i = 0;
+@responses = (
+	['220 CONNECT OK',  undef        ], #CONNECT
+	['221 HELO ok',     undef        ], #EHLO
+	['222 sender ok',   undef        ], #MAIL FROM:
+	['223 rcpt ok',     undef        ], #RCPT TO:
+	['331 send data',   undef        ], #DATA
+	['.',               "LINE1\r\n"  ], #line1
+	['.',               "\r\n"       ], #line2
+	['.',               "..\r\n"     ], #line3
+	['.',               "...\r\n"    ], #line4
+	['.',               "....\r\n"   ], #line5
+	['.',               ".....\r\n"  ], #line6
+	['.',               "..LLL7\r\n" ], #line7
+	['.',               "LLLLL8\r\n" ], #line8
+	['220',             undef        ],
+);
+$loop->reactor->io($sock => sub {
+	my $cmd = <$sock>;
+	return unless $cmd; # socket closed
+	ok($cmd eq $responses[$i][1], "resp[$i]") if defined $responses[$i][1];
+	syswrite($sock, $responses[$i][0].CRLF);
+	$i++;
+});
+$smtp->send(
+	from => 'abc@mail.ru',
+	to   => 'xyz@mail.ru',
+	data => sub { get_data(2) },
+	sub { $loop->stop },
+);
 $loop->reactor->watch($sock, 1, 0);
 $loop->start;
 $loop->reactor->remove($sock);
