@@ -1,5 +1,10 @@
 Revision history for Perl extension Mojo::SMTP::Client
 
+0.11  Wed Jun 29 19:43:43 NOVT 2016
+    - Automatically normalize newlines in the message specified for `data'
+      and turn `.' at the start of the line to `..', which SMTP protocol
+      requires (#gh1)
+
 0.10  Wed Apr 22 13:06:04 NOVT 2015
     - Clean ripped childs inside tests to prevent tests failing on BINGOS's
       openBSDs
