@@ -386,9 +386,9 @@ sub _make_cmd_steps {
 					}
 					
 					my $data = $cmd[$mi]->();
-					my $data_buffer = ref $data ? $$data : $data;
+					$data = $$data if ref $data;
 					
-					unless (length($data_buffer) > 0) {
+					unless (length($data) > 0) {
 						$self->_write_cmd(($was_nl ? '' : Mojo::SMTP::Client::Response::CRLF).'.', CMD_DATA_END);
 						$self->_read_response($data_writer_cb, !$prepend && $mi == $#cmd);
 						$self->{expected_code} = CMD_OK;
@@ -396,38 +396,36 @@ sub _make_cmd_steps {
 					}
 					# The following part if heavily inspired by Net::Cmd
 					my $first_ch = '';
-					# We have not send anything yet, so last_ch = "\012" means we are at the start of a line
+					# We have not send anything yet, so last_ch = "\012" means we are at the start of a line (^. -> ..)
 					$last_ch = "\012" unless defined $last_ch;
 					if ($last_ch eq "\015") {
 						# Remove \012 so it does not get prefixed with another \015 below
 						# and escape the . if there is one following it because the fixup
 						# below will not find it
-						$first_ch = "\012" if $data_buffer =~ s/^\012(\.?)/$1$1/;
+						$first_ch = "\012" if $data =~ s/^\012(\.?)/$1$1/;
 					}
 					elsif ($last_ch eq "\012") {
 						# Fixup below will not find the . as the first character of the buffer
-						$first_ch = "." if $data_buffer =~ /^\./;
+						$first_ch = "." if $data =~ /^\./;
 					}
-					$data_buffer =~ s/\015?\012(\.?)/\015\012$1$1/sg;
-					substr($data_buffer, 0, 0) = $first_ch;
-					$last_ch = substr($data_buffer, -1, 1);
-					$was_nl = _has_nl($data_buffer);
-					$self->{stream}->write($data_buffer, $data_writer);
+					$data =~ s/\015?\012(\.?)/\015\012$1$1/g;
+					substr($data, 0, 0) = $first_ch;
+					$last_ch = substr($data, -1, 1);
+					$was_nl = _has_nl($data);
+					$self->{stream}->write($data, $data_writer);
 				};
 				
 				push @steps, $data_writer, $self->{resp_checker};
 			}
 			else {
-				my $data_buffer;
 				push @steps, sub {
 					my $delay = shift;
-					$data_buffer = ref $cmd[$mi] ? ${$cmd[$mi]} : $cmd[$mi];
-					$data_buffer =~ s/\015?\012(\.?)/\015\012$1$1/sg; # turn . into .. if it's first character of the line
-					$self->{stream}->write($data_buffer, $delay->begin);
+					(ref $cmd[$mi] ? ${$cmd[$mi]} : $cmd[$mi]) =~ s/\015?\012(\.?)/\015\012$1$1/g; # turn . into .. if it's first character of the line and normalize newline
+					$self->{stream}->write(ref $cmd[$mi] ? ${$cmd[$mi]} : $cmd[$mi], $delay->begin);
 				},
 				sub {
 					my $delay = shift;
-					$self->_write_cmd((_has_nl($data_buffer) ? '' : Mojo::SMTP::Client::Response::CRLF).'.', CMD_DATA_END);
+					$self->_write_cmd((_has_nl($cmd[$mi]) ? '' : Mojo::SMTP::Client::Response::CRLF).'.', CMD_DATA_END);
 					$self->_read_response($delay->begin, !$prepend && $mi == $#cmd);
 					$self->{expected_code} = CMD_OK;
 				},
@@ -505,10 +503,7 @@ sub _rm_stream {
 }
 
 sub _has_nl {
-	if (ref $_[0]) {
-		return ${$_[0]} =~ /\015\012$/;
-	}
-	$_[0] =~ /\015\012$/;
+	substr(ref $_[0] ? ${$_[0]} : $_[0], -2, 2) eq Mojo::SMTP::Client::Response::CRLF;
 }
 
 sub DESTROY {
