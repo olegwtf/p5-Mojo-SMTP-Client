@@ -9,9 +9,11 @@ if ($^O eq 'MSWin32') {
 	plan skip_all => 'fork() support required';
 }
 
+my $tls = (exists &Mojo::IOLoop::Client::TLS ? &Mojo::IOLoop::Client::TLS : &Mojo::IOLoop::TLS::TLS) || 0;
+
 # 1
-my ($pid, $sock, $host, $port) = Utils::make_smtp_server(Mojo::IOLoop::Client::TLS);
-my $smtp = Mojo::SMTP::Client->new(address => $host, port => $port, tls => Mojo::IOLoop::Client::TLS||0);
+my ($pid, $sock, $host, $port) = Utils::make_smtp_server($tls);
+my $smtp = Mojo::SMTP::Client->new(address => $host, port => $port, tls => $tls);
 syswrite($sock, join(CRLF, '220 host.net', '220 hello ok', '220 from ok', '220 to ok', '220 quit ok').CRLF);
 
 my $resp = $smtp->send(hello => 'mymail.host', from => '', to => 'jorik@gmail.com', quit => 1);
