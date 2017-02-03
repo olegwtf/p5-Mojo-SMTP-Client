@@ -1,5 +1,8 @@
 Revision history for Perl extension Mojo::SMTP::Client
 
+0.12  Sat Feb  4 00:32:46 KRAT 2017
+    - Fix tests, so they works with newer Mojolicious (#rt119946)
+
 0.11  Wed Jun 29 19:43:43 NOVT 2016
     - Automatically normalize newlines in the message specified for `data'
       and turn `.' at the start of the line to `..', which SMTP protocol
