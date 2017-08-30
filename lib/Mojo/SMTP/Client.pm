@@ -146,7 +146,9 @@ sub send {
 		->catch(sub {
 			# handle exceptions which were thrown
 			my ($ioloop, $err) = @_;
-			$err = Mojo::SMTP::Client::Response->new('', error => $err) unless $err->isa("Mojo::SMTP::Client::Exception");
+			unless ($err->isa("Mojo::SMTP::Client::Exception") or $err->isa("Mojo::SMTP::Client::Response")) {
+				$err = Mojo::SMTP::Client::Response->new('', error => $err)
+			}
 			$ioloop->emit(finish => $err);
 		});
 	$delay->on(finish => sub {
