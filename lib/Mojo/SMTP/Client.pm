@@ -140,12 +140,21 @@ sub send {
 	push @steps, $self->_make_cmd_steps(0, @_);
 	
 	# non-blocking
-	my $delay = $self->{delay} = Mojo::IOLoop::Delay->new(ioloop => $self->_ioloop)->steps(@steps)->catch(sub {
-		shift->emit(finish => $_[0]);
-	});
+	my $delay = $self->{delay} = Mojo::IOLoop::Delay
+		->new(ioloop => $self->_ioloop)
+		->steps(@steps)
+		->catch(sub {
+			# handle exceptions which were thrown
+			my ($ioloop, $err) = @_;
+			unless ($err->isa("Mojo::SMTP::Client::Exception") or $err->isa("Mojo::SMTP::Client::Response")) {
+				$err = Mojo::SMTP::Client::Response->new('', error => $err)
+			}
+			$ioloop->emit(finish => $err);
+		});
 	$delay->on(finish => sub {
 		if ($cb) {
 			my $r = $_[1];
+			# handle exceptions which where returned
 			if ($r->isa('Mojo::SMTP::Client::Exception')) {
 				$r = Mojo::SMTP::Client::Response->new('', error => $r);
 			}
@@ -238,7 +247,7 @@ sub _make_cmd_steps {
 			sub {
 				eval { $self->{resp_checker}->(@_); $_[1]->{checked} = 1 };
 				if (my $e = $@) {
-					die $e unless $e->error->isa('Mojo::SMTP::Client::Exception::Response');
+					die $e unless ($e->can('error') and $e->error->isa('Mojo::SMTP::Client::Exception::Response'));
 					my $delay = shift;
 					
 					$self->{stream}->start if !$prepend && $mi == $#cmd; # XXX: _read_response may stop stream
