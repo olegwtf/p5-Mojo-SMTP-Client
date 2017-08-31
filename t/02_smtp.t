@@ -56,7 +56,7 @@ syswrite($sock, '500 host.net is busy'.CRLF);
 eval {
 	$smtp->send();
 };
-ok(my $e = $@, 'bad response');
+ok($e = $@, 'bad response');
 isa_ok($e, 'Mojo::SMTP::Client::Exception::Response');
 close $sock;
 kill 15, $pid;
@@ -77,7 +77,7 @@ $smtp->on(response => sub {
 eval {
 	$smtp->send(hello => 'mymail.host', from => '', to => 'jorik@gmail.com', quit => 1);
 };
-my $e = $@;
+$e = $@;
 is(ref $e, 'Mojo::Exception', 'got right exception');
 is($e->message, 'Throwed from response callback', 'with right message');
 

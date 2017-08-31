@@ -526,14 +526,14 @@ close $sock;
 kill 15, $pid;
 
 # 9 - AUTH LOGIN method
-my ($pid, $sock, $host, $port) = Utils::make_smtp_server();
-my $smtp = Mojo::SMTP::Client->new(address => $host, port => $port);
-my $connections = 0;
+($pid, $sock, $host, $port) = Utils::make_smtp_server();
+$smtp = Mojo::SMTP::Client->new(address => $host, port => $port);
+$connections = 0;
 $smtp->on(start => sub {
     $connections++;
 });
 
-my @cmd = (
+@cmd = (
     'CONNECT' => '220 CONNECT OK',
     'EHLO localhost.localdomain' => '203 HELLO!!!!',
     'AUTH LOGIN' => '334 VXNlcm5hbWU6',   # 334 Username:

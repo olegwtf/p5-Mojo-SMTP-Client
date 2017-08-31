@@ -355,7 +355,7 @@ sub _make_cmd_steps {
 				# send username
 				$self->_new_cmd(sub {
 					my $delay = shift;
-					$self->_write_cmd(''.b64_encode($cmd[$mi]->{login}, ''), CMD_AUTH);
+					$self->_write_cmd(b64_encode($cmd[$mi]->{login}, ''), CMD_AUTH);
 					$self->_read_response($delay->begin, 0);
 					$self->{expected_code} = CMD_MORE;
 				}),
@@ -363,7 +363,7 @@ sub _make_cmd_steps {
 				# send password
 				$self->_new_cmd(sub {
 					my $delay = shift;
-					$self->_write_cmd(''.b64_encode($cmd[$mi]->{password}, ''), CMD_AUTH);
+					$self->_write_cmd(b64_encode($cmd[$mi]->{password}, ''), CMD_AUTH);
 					$self->_read_response($delay->begin, !$prepend && $mi == $#cmd);
 					$self->{expected_code} = CMD_OK;
 				}),
