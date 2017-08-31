@@ -459,6 +459,72 @@ $loop->reactor->remove($sock);
 close $sock;
 kill 15, $pid;
 
+# 7
+($pid, $sock, $host, $port) = Utils::make_smtp_server();
+$smtp = Mojo::SMTP::Client->new(address => $host, port => $port, hello => 'dragon-host.net');
+$smtp->on(start => sub {
+	die "error from start callback\n";
+});
+
+$smtp->send(
+	from => 'abc@mail.ru',
+	to   => 'xyz@mail.ru',
+	data => 'smth useless',
+	sub { 
+		my $resp = pop;
+		
+		ok($resp->error, "Got error from the `start' callback");
+		is($resp->error, "error from start callback\n", "Got right error");
+		
+		$loop->stop;
+	}
+);
+
+$loop->start;
+close $sock;
+kill 15, $pid;
+
+# 8
+($pid, $sock, $host, $port) = Utils::make_smtp_server();
+$smtp = Mojo::SMTP::Client->new(address => $host, port => $port, hello => 'dragon-host.net');
+$smtp->on(response => sub {
+	my $cmd = $_[1];
+	
+	if ($cmd == Mojo::SMTP::Client::CMD_EHLO) {
+		die "I don't like you\n";
+	}
+});
+
+$i = 0;
+
+$smtp->send(
+	from => 'abc@mail.ru',
+	to   => 'xyz@mail.ru',
+	data => 'smth useless',
+	sub { 
+		my $resp = pop;
+		
+		ok($resp->error, "Got error from the `response' callback");
+		is($resp->error, "I don't like you\n", "Got right error");
+		is($i, 2, "connect -> EHLO -> die");
+		
+		$loop->stop;
+	}
+);
+
+$loop->reactor->io($sock => sub {
+	my $cmd = <$sock>;
+	return unless $cmd; # socket closed
+	syswrite($sock, '220 OK'.CRLF);
+	$i++;
+});
+
+$loop->reactor->watch($sock, 1, 0);
+$loop->start;
+$loop->reactor->remove($sock);
+close $sock;
+kill 15, $pid;
+
 done_testing;
 
 __DATA__
