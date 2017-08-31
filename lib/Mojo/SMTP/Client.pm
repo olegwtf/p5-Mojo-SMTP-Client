@@ -146,7 +146,8 @@ sub send {
 	$delay->on(finish => sub {
 		if ($cb) {
 			my $r = $_[1];
-			if ($r->isa('Mojo::SMTP::Client::Exception')) {
+			unless ($r->isa('Mojo::SMTP::Client::Response')) {
+				# some error occured, which throwed an exception
 				$r = Mojo::SMTP::Client::Response->new('', error => $r);
 			}
 			
@@ -238,7 +239,7 @@ sub _make_cmd_steps {
 			sub {
 				eval { $self->{resp_checker}->(@_); $_[1]->{checked} = 1 };
 				if (my $e = $@) {
-					die $e unless $e->error->isa('Mojo::SMTP::Client::Exception::Response');
+					die $e unless $e->isa('Mojo::SMTP::Client::Response');
 					my $delay = shift;
 					
 					$self->{stream}->start if !$prepend && $mi == $#cmd; # XXX: _read_response may stop stream
@@ -623,7 +624,8 @@ C<Mojo::SMTP::Client> inherits all events from L<Mojo::EventEmitter> and can emi
 		$smtp->inactivity_timeout(5*60);
 	});
 
-Emitted whenever a new connection is about to start.
+Emitted whenever a new connection is about to start. You can interrupt sending by dying or throwing an exception
+from this callback, C<error> attribute of the response will contain corresponding error.
 
 =head2 response
 
@@ -636,7 +638,8 @@ Emitted whenever a new connection is about to start.
 	});
 
 Emitted for each SMTP response from the server. C<$cmd> is a command L<constant|/CONSTANTS> for which this
-response was sent. C<$resp> is L<Mojo::SMTP::Client::Response> object.
+response was sent. C<$resp> is L<Mojo::SMTP::Client::Response> object. You can interrupt sending by dying or
+throwing an exception from this callback, C<error> attribute of the response will contain corresponding error.
 
 =head1 ATTRIBUTES
 
@@ -788,7 +791,7 @@ C<$resp-E<gt>message> (string).
 
 For blocking usage C<$resp> will be returned as result of C<$smtp-E<gt>send> call. C<$resp> is the same as for
 non-blocking result. If L</autodie> attribute has true value C<send> will throw an exception on any error.
-Which will be one of C<Mojo::SMTP::Client::Exception::*>.
+Which will be one of C<Mojo::SMTP::Client::Exception::*> or an error throwed by the user inside L<start> or L<connect> callback.
 
 B<Note>. For SMTP protocol it is important to send commands in certain order. Also C<send> will send all commands in order you are
 specified. So, it is important to pass arguments to C<send> in right order. For basic usage this will always be:
