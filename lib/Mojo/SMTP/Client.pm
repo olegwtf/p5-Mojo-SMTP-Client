@@ -754,7 +754,7 @@ C<$resp-E<gt>message> (string).
 
 For blocking usage C<$resp> will be returned as result of C<$smtp-E<gt>send> call. C<$resp> is the same as for
 non-blocking result. If L</autodie> attribute has true value C<send> will throw an exception on any error.
-Which will be one of C<Mojo::SMTP::Client::Exception::*> or an error throwed by the user inside <start> or L<connect> callback.
+Which will be one of C<Mojo::SMTP::Client::Exception::*> or an error throwed by the user inside L<start> or L<connect> callback.
 
 B<Note>. For SMTP protocol it is important to send commands in certain order. Also C<send> will send all commands in order you are
 specified. So, it is important to pass arguments to C<send> in right order. For basic usage this will always be:
