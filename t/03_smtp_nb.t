@@ -525,6 +525,56 @@ $loop->reactor->remove($sock);
 close $sock;
 kill 15, $pid;
 
+# 9 - AUTH LOGIN method
+($pid, $sock, $host, $port) = Utils::make_smtp_server();
+$smtp = Mojo::SMTP::Client->new(address => $host, port => $port);
+$connections = 0;
+$smtp->on(start => sub {
+    $connections++;
+});
+
+@cmd = (
+    'CONNECT' => '220 CONNECT OK',
+    'EHLO localhost.localdomain' => '203 HELLO!!!!',
+    'AUTH LOGIN' => '334 VXNlcm5hbWU6',   # 334 Username:
+    'am9yYQ=='   => '334 UGFzc3dvcmQ6',   # 334 Password:
+    'dGVzdA=='   => '235 Authentication succeeded',
+    'MAIL FROM:<baralgin@mail.net>' => '222 sender ok',
+    'RCPT TO:<jorik@40.com>' => '223 rcpt ok',
+    'QUIT' => '200 See you',
+);
+
+$smtp->send(
+    auth => { type => 'LOGin', login => 'jora', password => 'test' },
+    from => 'baralgin@mail.net',
+    to => 'jorik@40.com',
+    quit => 1,
+    sub {
+        my $resp = pop;
+        ok(!$resp->error, 'no error') or diag $resp->error;
+        $loop->stop;
+    }
+);
+
+$i = 0;
+$loop->reactor->io($sock => sub {
+    my $client_cmd = <$sock>;
+    return unless $client_cmd; # socket closed
+    $client_cmd =~ s/\s+$//;
+
+    is($client_cmd, $cmd[$i], 'right cmd from client') or $loop->stop;
+    syswrite($sock, $cmd[$i+1].CRLF);
+    $i+=2;
+});
+
+$loop->reactor->watch($sock, 1, 0);
+$loop->start;
+$loop->reactor->remove($sock);
+
+is($connections, 1, 'right connections count');
+close $sock;
+kill 15, $pid;
+
 done_testing;
 
 __DATA__

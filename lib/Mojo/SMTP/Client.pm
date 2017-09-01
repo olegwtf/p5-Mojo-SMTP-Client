@@ -326,17 +326,53 @@ sub _make_cmd_steps {
 			}
 		}
 		elsif ($cmd[$i] eq 'auth') { # AUTH
-			push @steps, $self->_new_cmd(sub {
-				my $delay = shift;
-				$self->_write_cmd('AUTH PLAIN '.b64_encode(join("\0", '', $cmd[$mi]->{login}, $cmd[$mi]->{password}), ''), CMD_AUTH);
-				$self->_read_response($delay->begin, !$prepend && $mi == $#cmd);
-				$self->{expected_code} = CMD_OK;
-			}),
-			$self->{resp_checker},
-			sub {
+			my $type = lc($cmd[$mi]->{type} // 'plain');
+			my $set_auth_ok = sub {
 				my $delay = shift;
 				$self->{authorized} = 1;
 				$delay->pass;
+			};
+			
+			if ($type eq 'plain') {
+				push @steps, $self->_new_cmd(sub {
+					my $delay = shift;
+					$self->_write_cmd('AUTH PLAIN '.b64_encode(join("\0", '', $cmd[$mi]->{login}, $cmd[$mi]->{password}), ''), CMD_AUTH);
+					$self->_read_response($delay->begin, !$prepend && $mi == $#cmd);
+					$self->{expected_code} = CMD_OK;
+				}),
+				$self->{resp_checker},
+				$set_auth_ok;
+			}
+			elsif ($type eq 'login') {
+				push @steps,
+				# start auth
+				$self->_new_cmd(sub {
+					my $delay = shift;
+					$self->_write_cmd('AUTH LOGIN', CMD_AUTH);
+					$self->_read_response($delay->begin, 0);
+					$self->{expected_code} = CMD_MORE;
+				}),
+				$self->{resp_checker},
+				# send username
+				$self->_new_cmd(sub {
+					my $delay = shift;
+					$self->_write_cmd(b64_encode($cmd[$mi]->{login}, ''), CMD_AUTH);
+					$self->_read_response($delay->begin, 0);
+					$self->{expected_code} = CMD_MORE;
+				}),
+				$self->{resp_checker},
+				# send password
+				$self->_new_cmd(sub {
+					my $delay = shift;
+					$self->_write_cmd(b64_encode($cmd[$mi]->{password}, ''), CMD_AUTH);
+					$self->_read_response($delay->begin, !$prepend && $mi == $#cmd);
+					$self->{expected_code} = CMD_OK;
+				}),
+				$self->{resp_checker},
+				$set_auth_ok;
+			}
+			else {
+			    croak 'unrecognized auth method: ', $type;
 			}
 		}
 		elsif ($cmd[$i] eq 'from') { # FROM
@@ -703,10 +739,12 @@ attributes
 
 =item auth
 
-Authorize on SMTP server. Argument to this command should be reference to a hash with C<login> and C<password>
-keys. Only PLAIN authorization supported for now. You should authorize only once per session
+Authorize on SMTP server. Argument to this command should be a reference to a hash with C<type>,
+C<login> and C<password> keys. Only PLAIN and LOGIN authorization are supported as C<type> for now.
+You should authorize only once per session.
 
-	$smtp->send(auth => {login => 'oleg', password => 'qwerty'});
+    $smtp->send(auth => {login => 'oleg', password => 'qwerty'});      # defaults to AUTH PLAIN
+    $smtp->send(auth => {login => 'oleg', password => 'qwerty', type => 'login'}); # AUTH LOGIN
 
 =item from
 
