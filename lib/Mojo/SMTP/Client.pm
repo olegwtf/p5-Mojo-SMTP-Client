@@ -332,6 +332,7 @@ sub _make_cmd_steps {
 				$self->{authorized} = 1;
 				$delay->pass;
 			};
+			
 			if ($type eq 'plain') {
 				push @steps, $self->_new_cmd(sub {
 					my $delay = shift;
