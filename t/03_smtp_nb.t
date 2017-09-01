@@ -544,7 +544,6 @@ $smtp->on(start => sub {
     'QUIT' => '200 See you',
 );
 
-
 $smtp->send(
     auth => { type => 'LOGin', login => 'jora', password => 'test' },
     from => 'baralgin@mail.net',
