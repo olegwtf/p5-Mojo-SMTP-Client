@@ -140,8 +140,9 @@ sub send {
 	push @steps, $self->_make_cmd_steps(0, @_);
 	
 	# non-blocking
-	my $delay = $self->{delay} = Mojo::IOLoop::Delay->new(ioloop => $self->_ioloop)->steps(@steps)->catch(sub {
-		shift->emit(finish => $_[0]);
+	my $delay = $self->{delay} = Mojo::IOLoop::Delay->new(ioloop => $self->_ioloop)->steps(@steps);
+	$delay->catch(sub {
+		$delay->emit(finish => $_[0]);
 	});
 	$delay->on(finish => sub {
 		if ($cb) {
