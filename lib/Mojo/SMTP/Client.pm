@@ -144,7 +144,9 @@ sub send {
 	
 	# non-blocking
 	my $delay = $self->{delay} = Mojo::IOLoop::Delay->new(ioloop => $self->_ioloop)->steps(@steps);
-	$delay->finally($self->{finally} = sub {
+	$self->{finally} = sub {
+		shift if @_ == 2; # delay
+		
 		if ($cb) {
 			my $r = $_[0];
 			unless ($r->isa('Mojo::SMTP::Client::Response')) {
@@ -152,12 +154,14 @@ sub send {
 				$r = Mojo::SMTP::Client::Response->new('', error => $r);
 			}
 			
-			$cb->($self, $r);
-			$cb = undef;
 			delete $self->{delay};
 			delete $self->{finally};
+			
+			$cb->($self, $r);
+			$cb = undef;
 		}
-	});
+	};
+	$delay->catch($self->{finally});
 	
 	# blocking
 	my $resp;
@@ -223,7 +227,7 @@ sub _make_cmd_steps {
 			$self->{stream}->timeout(0);
 			$self->{stream}->stop;
 		}
-		return;
+		return $self->{finally};
 	}
 	
 	if ( my $sub = $self->can("_cmd_$cmd") ) {
