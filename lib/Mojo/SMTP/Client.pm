@@ -114,7 +114,7 @@ sub send {
 				tls_ca     => $self->tls_ca,
 				tls_cert   => $self->tls_cert,
 				tls_key    => $self->tls_key,
-				tls_verify => $self->tls_verify,
+				tls_options => { SSL_verify_mode => $self->tls_verify },
 			);
 		},
 		sub {
