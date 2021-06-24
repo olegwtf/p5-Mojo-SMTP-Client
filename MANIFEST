@@ -8,6 +8,6 @@ README
 t/01_load.t
 t/02_smtp.t
 t/03_smtp_nb.t
-t/cert/server-cert.pem
-t/cert/server-key.pem
+t/cert/server.crt
+t/cert/server.key
 t/lib/Utils.pm
