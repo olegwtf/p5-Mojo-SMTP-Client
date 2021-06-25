@@ -11,7 +11,7 @@ use Mojo::SMTP::Client::Exception;
 use Scalar::Util 'weaken';
 use Carp;
 
-our $VERSION = '0.20_1';
+our $VERSION = '0.20_2';
 
 use constant {
 	CMD_OK       => 2,

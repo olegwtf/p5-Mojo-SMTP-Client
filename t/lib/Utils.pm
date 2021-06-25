@@ -20,8 +20,8 @@ sub make_smtp_server {
 	my $class;
 	if ($tls) {
 		$class = 'IO::Socket::SSL';
-		push @opts, SSL_cert_file => 't/cert/server-cert.pem',
-		            SSL_key_file  => 't/cert/server-key.pem';
+		push @opts, SSL_cert_file => 't/cert/server.crt',
+		            SSL_key_file  => 't/cert/server.key';
 	}
 	else {
 		$class = 'IO::Socket::INET';
