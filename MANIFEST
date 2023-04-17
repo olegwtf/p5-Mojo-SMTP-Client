@@ -8,6 +8,8 @@ README
 t/01_load.t
 t/02_smtp.t
 t/03_smtp_nb.t
+t/cert/new-keypair.sh
+t/cert/openssl.cnf
 t/cert/server.crt
 t/cert/server.key
 t/lib/Utils.pm
